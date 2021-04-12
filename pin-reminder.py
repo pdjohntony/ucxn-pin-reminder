@@ -107,3 +107,24 @@ if __name__ == "__main__":
 	
 	print("Getting PIN data...")
 	get_pin_data()
+
+	df = pandas.DataFrame(mailboxes)
+	# Create a Pandas Excel writer using XlsxWriter as the engine.
+	writer = pandas.ExcelWriter("report.xlsx", engine='xlsxwriter')
+	# Convert the dataframe to an XlsxWriter Excel object.
+	df.to_excel(writer, sheet_name='Sheet1', index=False)
+	# Get the xlsxwriter workbook and worksheet objects.
+	workbook  = writer.book
+	worksheet = writer.sheets['Sheet1']
+	# Add some cell formats.
+	format1 = workbook.add_format({'num_format': '@'})
+	# format1.set_num_format('@') # @ - This is text format in excel
+	# Set the format but not the column width.
+	# worksheet.set_column('A:A', 13)
+	# worksheet.set_column('B:B', 17)
+	# worksheet.set_column('C:C', 8)
+	# worksheet.set_column('D:D', 38)
+	# worksheet.set_column('E:E', 13)
+	# Close the Pandas Excel writer and output the Excel file.
+	writer.save()
+	print("Output saved")
