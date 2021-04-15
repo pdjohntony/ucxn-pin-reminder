@@ -7,6 +7,7 @@ import requests
 import json
 import pandas
 import math
+from tqdm import tqdm
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
@@ -16,8 +17,6 @@ headers = {
 	"accept"      : "application/json",
 	"connection"  : "keep-alive"
 }
-
-today = datetime.datetime.today()
 
 def read_ini(file_path):
 	config = configparser.ConfigParser()
@@ -55,13 +54,13 @@ def get_mailboxes():
 	print(f"total_pages = {total_pages}")
 	print("Starting page loop")
 
-	for pageNumber in range(total_pages):
+	mailboxes = []
+	for pageNumber in tqdm(range(total_pages)):
 		print(f"pageNumber = {pageNumber+1}")
 		url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage={rowsPerPage}&pageNumber={pageNumber+1}"
 		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 		resp_json = response.json()
 
-		mailboxes = []
 		for m in resp_json["User"]:
 			mailboxes.append({
 				"ObjectId"     : m["ObjectId"],
@@ -73,7 +72,7 @@ def get_mailboxes():
 	return mailboxes
 
 def get_pin_data():
-	for m in mailboxes:
+	for m in tqdm(mailboxes):
 		url       = f"{cfg['base_url']}/vmrest/users/{m['ObjectId']}/credential/pin"
 		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 		resp_json = response.json()
@@ -98,6 +97,9 @@ def get_pin_data():
 
 if __name__ == "__main__":
 	cfg = read_ini("config.ini")
+	today = datetime.datetime.today()
+	time_start = datetime.datetime.now()
+	print(time_start)
 
 	print("Getting auth rules...")
 	authrules = get_auth_rules()
@@ -128,3 +130,6 @@ if __name__ == "__main__":
 	# Close the Pandas Excel writer and output the Excel file.
 	writer.save()
 	print("Output saved")
+
+	time_end = datetime.datetime.now()
+	print(time_end)
