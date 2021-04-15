@@ -1,0 +1,7 @@
+This email has been automatically generated to let you know your Voicemail PIN for extension {ext} is going to expire in {days}.
+
+Please access the Cisco Personal Communications Assistant at https://ucxn1.xyz.com/ciscopca/ to change your PIN.
+
+For assistance, please contact the IT Service Desk at ext. 4357.
+
+Thank you.
