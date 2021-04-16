@@ -18,6 +18,16 @@ from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
 
+#! TO DO LIST
+# CLEAN THINGS UP
+# PROPER CFG CHECKS
+# IMPLEMENT LOGGER
+# PROPER EMAIL FILE CHECKS SO 15+ MINUTE DATA GATHERING ISN'T A WASTE
+# WRAP EMAILS INTO TRY/EXCEPTIONS SO AT LEAST REPORT CAN BE SAVED
+# ADD IF EMAIL WAS SENT COLUMN TO MAILBOX DF
+# CONFIGURE ADMIN EMAIL INTERVALS
+# COLLECT EMAIL SENT STATS FOR ADMIN REPORT/EMAIL
+
 headers = {
 	"content-type": "application/json",
 	"accept"      : "application/json",
@@ -29,13 +39,16 @@ def read_ini(file_path):
 	config.read(file_path)
 
 	cfg = {
-		"base_url"       : "https://" + config["UNITY"]["server"],
-		"creds"          : (config["UNITY"]["username"], config["UNITY"]["password"]),
-		"smtp_server"    : config["SMTP"]["server"],
-		"from_address"   : config["SMTP"]["from_address"],
-		"email_intervals": config["SMTP"]["email_intervals"].split(","),
-		"admin_email"    : config["SMTP"]["admin_email"],
-		"retention_days" : int(config["LOGGING"]["retention_days"])
+		"base_url"                : "https://" + config["UNITY"]["server"],
+		"creds"                   : (config["UNITY"]["username"], config["UNITY"]["password"]),
+		"smtp_server"             : config["SMTP"]["server"],
+		"from_address"            : config["SMTP"]["from_address"],
+		"email_intervals"         : config["SMTP"]["email_intervals"].split(","),
+		"admin_email"             : config["SMTP"]["admin_email"],
+		"retention_days"          : int(config["LOGGING"]["retention_days"]),
+		"admin_report_email_file" : config["SMTP"]["admin_report_email_file"],
+		"user_reminder_email_file": config["SMTP"]["user_reminder_email_file"],
+		"user_reminder_attachment": config["SMTP"]["user_reminder_attachment"]
 	}
 	return cfg
 
@@ -125,17 +138,17 @@ def analyze_pin_data():
 				message["From"]    = sender
 				message["To"]      = receivers
 
-				text = open("email_reminder.txt", "r")
+				text = open("email_assets/"+cfg['user_reminder_email_file']+".txt", "r")
 				text = text.read()
 				text = text.format(ext=m['Extension'],days=days_str)
-				html = open("email_reminder.html", "r")
+				html = open("email_assets/"+cfg['user_reminder_email_file']+".html", "r")
 				html = html.read()
 				html = html.format(ext=m['Extension'],days=days_str)
 
-				attachment_filename = "email_reminder.txt"  # In same directory as script
+				attachment_filename = cfg['user_reminder_attachment']  # In same directory as script
 
 				# Open file in binary mode
-				with open(attachment_filename, "rb") as attachment:
+				with open("email_assets/"+attachment_filename, "rb") as attachment:
 					part_att = MIMEBase("application", "octet-stream") # Add file as application/octet-stream
 					part_att.set_payload(attachment.read())            # Email client can usually download this automatically as attachment
 
@@ -162,18 +175,45 @@ def analyze_pin_data():
 
 	return mailboxes
 
-def send_admin_email(smtp_server, from_address, admin_email):
-	sender    = from_address
-	receivers = admin_email
+def send_admin_email():
+	sender    = cfg['from_address']
+	receivers = cfg['admin_email']
 
-	message = """\
-Subject: Hi there
+	message            = MIMEMultipart("alternative")
+	message["Subject"] = "Unity Connection PIN Reminder & Report Tool"
+	message["From"]    = sender
+	message["To"]      = receivers
 
-This message is sent from Python."""
+	text = open("email_assets/"+cfg['admin_report_email_file']+".txt", "r")
+	text = text.read()
+	# text = text.format(ext=m['Extension'],days=days_str)
+	html = open("email_assets/"+cfg['admin_report_email_file']+".html", "r")
+	html = html.read()
+	# html = html.format(ext=m['Extension'],days=days_str)
+
+	attachment_filename = report_filename  # In same directory as script
+
+	# Open file in binary mode
+	with open("reports/"+attachment_filename, "rb") as attachment:
+		part_att = MIMEBase("application", "octet-stream") # Add file as application/octet-stream
+		part_att.set_payload(attachment.read())            # Email client can usually download this automatically as attachment
+
+	# Encode file in ASCII characters to send by email    
+	encoders.encode_base64(part_att)
+
+	# Add header as key/value pair to attachment part
+	part_att.add_header(
+		"Content-Disposition",
+		f"attachment; filename= {attachment_filename}",
+	)
+
+	message.attach(MIMEText(text, "plain")) # Add HTML/plain-text parts to MIMEMultipart message
+	message.attach(MIMEText(html, "html"))  # The email client will try to render the last part first
+	message.attach(part_att)                # Attachment File
 
 	try:
-		smtpObj = smtplib.SMTP(smtp_server)
-		smtpObj.sendmail(sender, receivers, message)         
+		smtpObj = smtplib.SMTP(cfg['smtp_server'])
+		smtpObj.sendmail(sender, receivers, message.as_string())         
 		print("Successfully sent email")
 	except Exception as e:
 		print("Error: unable to send email")
@@ -215,8 +255,8 @@ if __name__ == "__main__":
 	# Create a Pandas Excel writer using XlsxWriter as the engine.
 	df = pandas.DataFrame(mailboxes)
 	del df["ObjectId"]
-	report_filename = 'reports/ucxn_voicemail_pin_report_'+datetime.datetime.now().strftime("%Y-%m-%d-%I-%M-%S")+'.xlsx'
-	writer = pandas.ExcelWriter(report_filename, engine='xlsxwriter')
+	report_filename = 'ucxn_voicemail_pin_report_'+datetime.datetime.now().strftime("%Y-%m-%d-%I-%M-%S")+'.xlsx'
+	writer = pandas.ExcelWriter('reports/'+report_filename, engine='xlsxwriter')
 	# Convert the dataframe to an XlsxWriter Excel object.
 	df.to_excel(writer, sheet_name='Sheet1', index=False)
 	# Dynamically adjust all the column lengths
@@ -230,7 +270,7 @@ if __name__ == "__main__":
 	time_end = datetime.datetime.now()
 	print(time_end)
 
-	send_admin_email(cfg['smtp_server'], cfg['from_address'], cfg['admin_email'])
+	send_admin_email()
 
 	purge_files(cfg['retention_days'], "logs", ".log")
 	purge_files(cfg['retention_days'], "reports", ".xlsx")

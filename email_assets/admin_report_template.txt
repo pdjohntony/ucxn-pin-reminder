@@ -1,0 +1,8 @@
+Unity Connection PIN Reminder & Report Tool
+
+Tool Runtime = {1}
+User Emails Sent = {2}
+
+Maybe include historical stats if admin email will only be sent every week/month.
+
+See attached report for more details
