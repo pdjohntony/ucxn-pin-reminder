@@ -179,20 +179,20 @@ This message is sent from Python."""
 		print("Error: unable to send email")
 		print(e)
 
-def purge_reports(retention_days):
+def purge_files(retention_days, file_dir, file_ext):
 	try:
-		file_ext = ".xlsx"
 		if retention_days > 0:
-			print(f"Purging XLSX report files older than {retention_days} days...")
+			print(f"Purging {file_ext} files in {file_dir} folder older than {retention_days} days...")
 			retention_sec = retention_days*86400
 			now = time.time()
-			for file in os.listdir():
+			for file in os.listdir(file_dir):
 				if file.endswith(file_ext):
-					if os.stat(file).st_mtime < (now-retention_sec):
-						os.remove(file)
+					file_fullpath = os.path.join(file_dir, file)
+					if os.stat(file_fullpath).st_mtime < (now-retention_sec):
+						os.remove(file_fullpath)
 						print(f"{file} has been deleted")
 	except Exception as e:
-		print("Report cleanup error: " + str(e))
+		print("File purge error: " + str(e))
 
 if __name__ == "__main__":
 	cfg = read_ini("config.ini")
@@ -215,7 +215,7 @@ if __name__ == "__main__":
 	# Create a Pandas Excel writer using XlsxWriter as the engine.
 	df = pandas.DataFrame(mailboxes)
 	del df["ObjectId"]
-	report_filename = 'ucxn_voicemail_pin_report_'+datetime.datetime.now().strftime("%Y-%m-%d-%I-%M-%S")+'.xlsx'
+	report_filename = 'reports/ucxn_voicemail_pin_report_'+datetime.datetime.now().strftime("%Y-%m-%d-%I-%M-%S")+'.xlsx'
 	writer = pandas.ExcelWriter(report_filename, engine='xlsxwriter')
 	# Convert the dataframe to an XlsxWriter Excel object.
 	df.to_excel(writer, sheet_name='Sheet1', index=False)
@@ -232,4 +232,5 @@ if __name__ == "__main__":
 
 	send_admin_email(cfg['smtp_server'], cfg['from_address'], cfg['admin_email'])
 
-	purge_reports(cfg['retention_days'])
+	purge_files(cfg['retention_days'], "logs", ".log")
+	purge_files(cfg['retention_days'], "reports", ".xlsx")
