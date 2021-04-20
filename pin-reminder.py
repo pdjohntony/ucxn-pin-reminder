@@ -20,13 +20,11 @@ disable_warnings(InsecureRequestWarning)
 
 #! TO DO LIST
 # CLEAN THINGS UP
-# PROPER CFG CHECKS
 # IMPLEMENT LOGGER
-# PROPER EMAIL FILE CHECKS SO 15+ MINUTE DATA GATHERING ISN'T A WASTE
-# WRAP EMAILS INTO TRY/EXCEPTIONS SO AT LEAST REPORT CAN BE SAVED
 # ADD IF EMAIL WAS SENT COLUMN TO MAILBOX DF
 # CONFIGURE ADMIN EMAIL INTERVALS
 # COLLECT EMAIL SENT STATS FOR ADMIN REPORT/EMAIL
+# UPDATE README
 
 headers = {
 	"content-type": "application/json",
@@ -34,23 +32,73 @@ headers = {
 	"connection"  : "keep-alive"
 }
 
-def read_ini(file_path):
-	config = configparser.ConfigParser()
-	config.read(file_path)
+def read_ini(cfg_file_name):
+	try:
+		if not os.path.isfile(cfg_file_name): # Check if file exists
+			print(f"{cfg_file_name} does not exist!")
+			sys.exit(1)
 
-	cfg = {
-		"base_url"                : "https://" + config["UNITY"]["server"],
-		"creds"                   : (config["UNITY"]["username"], config["UNITY"]["password"]),
-		"smtp_server"             : config["SMTP"]["server"],
-		"from_address"            : config["SMTP"]["from_address"],
-		"email_intervals"         : config["SMTP"]["email_intervals"].split(","),
-		"admin_email"             : config["SMTP"]["admin_email"],
-		"retention_days"          : int(config["LOGGING"]["retention_days"]),
-		"admin_report_email_file" : config["SMTP"]["admin_report_email_file"],
-		"user_reminder_email_file": config["SMTP"]["user_reminder_email_file"],
-		"user_reminder_attachment": config["SMTP"]["user_reminder_attachment"]
-	}
-	return cfg
+		config = configparser.ConfigParser()
+		config.read(cfg_file_name)
+		
+		cfg                                       = {}
+		cfg["base_url"]                           = config.get('UNITY', 'server')
+		cfg["username"]                           = config.get('UNITY', 'username')
+		cfg["password"]                           = config.get('UNITY', 'password')
+		cfg["smtp_server"]                        = config.get('SMTP', 'server')
+		cfg["from_address"]                       = config.get('SMTP', 'from_address')
+		cfg["email_intervals"]                    = config.get('SMTP', 'email_intervals')
+		cfg["admin_email"]                        = config.get('SMTP', 'admin_email')
+		cfg["admin_report_email_file_name"]       = config.get('SMTP', 'admin_report_email_file')
+		cfg["user_reminder_email_file_name"]      = config.get('SMTP', 'user_reminder_email_file')
+		cfg["user_reminder_attachment_file_name"] = config.get('SMTP', 'user_reminder_attachment')
+		cfg["retention_days"]                     = config.get('LOGGING', 'retention_days')
+		cfg["email_assets_folder_name"]           = "email_assets"
+		cfg["reports_folder_name"]                = "reports"
+		cfg["logs_folder_name"]                   = "logs"
+
+		return cfg
+	except Exception as e:
+		print(f"Error in {cfg_file_name} file: {e}")
+		sys.exit(1)
+
+def validate_ini(cfg_file_name):
+	try:
+		for k,v in cfg.items(): # Check for blank values
+			if v == "": raise Exception(f"{k} is blank")
+
+		cfg["base_url"]                 = "https://" + cfg["base_url"]
+		cfg["creds"]                    = (cfg["username"], cfg["password"])
+
+		cfg["email_intervals"]          = [x.strip() for x in cfg["email_intervals"].split(',')] # splits into list, then strips whitespace
+		cfg["admin_email"]              = [x.strip() for x in cfg["admin_email"].split(',')]
+
+		if not os.path.isdir(cfg["email_assets_folder_name"]): os.mkdir(cfg["email_assets_folder_name"])
+		if not os.path.isdir(cfg["reports_folder_name"]):      os.mkdir(cfg["reports_folder_name"])
+
+		cfg["admin_report_email_file_fqdn_txt"]  = os.path.join(cfg["email_assets_folder_name"], cfg["admin_report_email_file_name"]+".txt")
+		cfg["admin_report_email_file_fqdn_html"] = os.path.join(cfg["email_assets_folder_name"], cfg["admin_report_email_file_name"]+".html")
+		if not os.path.isfile(cfg["admin_report_email_file_fqdn_txt"]): raise Exception(f"{cfg['admin_report_email_file_fqdn_txt']} does not exist!")
+		if not os.path.isfile(cfg["admin_report_email_file_fqdn_html"]): raise Exception(f"{cfg['admin_report_email_file_fqdn_html']} does not exist!")
+
+		cfg["user_reminder_email_file_fqdn_txt"]  = os.path.join(cfg["email_assets_folder_name"], cfg["user_reminder_email_file_name"]+".txt")
+		cfg["user_reminder_email_file_fqdn_html"] = os.path.join(cfg["email_assets_folder_name"], cfg["user_reminder_email_file_name"]+".html")
+		if not os.path.isfile(cfg["user_reminder_email_file_fqdn_txt"]): raise Exception(f"{cfg['user_reminder_email_file_fqdn_txt']} does not exist!")
+		if not os.path.isfile(cfg["user_reminder_email_file_fqdn_html"]): raise Exception(f"{cfg['user_reminder_email_file_fqdn_html']} does not exist!")
+
+		cfg["user_reminder_attachment_file_fqdn"]  = os.path.join(cfg["email_assets_folder_name"], cfg["user_reminder_attachment_file_name"])
+		if not os.path.isfile(cfg["user_reminder_attachment_file_fqdn"]): raise Exception(f"{cfg['user_reminder_attachment_file_fqdn']} does not exist!")
+		
+		cfg["retention_days"]           = int(cfg["retention_days"])
+
+		for k,v in cfg.items(): print(f"{k}={v}")
+		return cfg
+	except ValueError:
+		print(f"Error in config file: retention_days must be a number not a string")
+		sys.exit(1)
+	except Exception as e:
+		print(f"Error in {cfg_file_name} file: {e}")
+		sys.exit(1)
 
 def get_auth_rules():
 	url       = f"{cfg['base_url']}/vmrest/authenticationrules"
@@ -121,103 +169,101 @@ def get_pin_data():
 
 def analyze_pin_data():
 	for m in tqdm(mailboxes):
-		if m["PIN Doesnt Expire"] == "false" and m["Email Address"] != "":
-			if any(str(m["Days Until Expired"]) in s for s in cfg['email_intervals']):
-				print(f"GOING TO SEND EMAIL TO {m['Alias']}")
+		try:
+			if m["PIN Doesnt Expire"] == "false" and m["Email Address"] != "":
+				if any(str(m["Days Until Expired"]) in s for s in cfg['email_intervals']):
+					print(f"\nSetting up email for Alias={m['Alias']}")
 
-				if m["Days Until Expired"] > 1:
-					days_str = f"{m['Days Until Expired']} days"
-				else:
-					days_str = f"{m['Days Until Expired']} day"
+					if m["Days Until Expired"] > 1:
+						days_str = f"{m['Days Until Expired']} days"
+					else:
+						days_str = f"{m['Days Until Expired']} day"
 
-				sender    = cfg['from_address']
-				receivers = m["Email Address"]
+					sender    = cfg['from_address']
+					receivers = m["Email Address"]
 
-				message            = MIMEMultipart("alternative")
-				message["Subject"] = f"{m['Extension']} - Voicemail PIN About to Expire - {m['Expiration Date']}"
-				message["From"]    = sender
-				message["To"]      = receivers
+					message            = MIMEMultipart("alternative")
+					message["Subject"] = f"{m['Extension']} - Voicemail PIN About to Expire - {m['Expiration Date']}"
+					message["From"]    = sender
+					message["To"]      = receivers
 
-				text = open("email_assets/"+cfg['user_reminder_email_file']+".txt", "r")
-				text = text.read()
-				text = text.format(ext=m['Extension'],days=days_str)
-				html = open("email_assets/"+cfg['user_reminder_email_file']+".html", "r")
-				html = html.read()
-				html = html.format(ext=m['Extension'],days=days_str)
+					text = open(cfg["user_reminder_email_file_fqdn_txt"], "r")
+					text = text.read()
+					text = text.format(ext=m['Extension'],days=days_str)
+					html = open(cfg["user_reminder_email_file_fqdn_html"], "r")
+					html = html.read()
+					html = html.format(ext=m['Extension'],days=days_str)
 
-				attachment_filename = cfg['user_reminder_attachment']  # In same directory as script
+					attachment_filename = cfg['user_reminder_attachment_file_name']  # In same directory as script
 
-				# Open file in binary mode
-				with open("email_assets/"+attachment_filename, "rb") as attachment:
-					part_att = MIMEBase("application", "octet-stream") # Add file as application/octet-stream
-					part_att.set_payload(attachment.read())            # Email client can usually download this automatically as attachment
+					# Open file in binary mode
+					with open(cfg['user_reminder_attachment_file_fqdn'], "rb") as attachment:
+						part_att = MIMEBase("application", "octet-stream") # Add file as application/octet-stream
+						part_att.set_payload(attachment.read())            # Email client can usually download this automatically as attachment
 
-				# Encode file in ASCII characters to send by email    
-				encoders.encode_base64(part_att)
+					# Encode file in ASCII characters to send by email    
+					encoders.encode_base64(part_att)
 
-				# Add header as key/value pair to attachment part
-				part_att.add_header(
-					"Content-Disposition",
-					f"attachment; filename= {attachment_filename}",
-				)
+					# Add header as key/value pair to attachment part
+					part_att.add_header(
+						"Content-Disposition",
+						f"attachment; filename= {attachment_filename}",
+					)
 
-				message.attach(MIMEText(text, "plain")) # Add HTML/plain-text parts to MIMEMultipart message
-				message.attach(MIMEText(html, "html"))  # The email client will try to render the last part first
-				message.attach(part_att)                # Attachment File
+					message.attach(MIMEText(text, "plain")) # Add HTML/plain-text parts to MIMEMultipart message
+					message.attach(MIMEText(html, "html"))  # The email client will try to render the last part first
+					message.attach(part_att)                # Attachment File
 
-				try:
 					smtpObj = smtplib.SMTP(cfg['smtp_server'])
 					smtpObj.sendmail(sender, receivers, message.as_string())         
-					print("Successfully sent email")
-				except Exception as e:
-					print("Error: unable to send email")
-					print(e)
+					print(f"Successfully sent email to={receivers}")
+		except Exception as e:
+			print(f"Error: User email was not sent: {e}")
 
 	return mailboxes
 
 def send_admin_email():
-	sender    = cfg['from_address']
-	receivers = cfg['admin_email']
-
-	message            = MIMEMultipart("alternative")
-	message["Subject"] = "Unity Connection PIN Reminder & Report Tool"
-	message["From"]    = sender
-	message["To"]      = receivers
-
-	text = open("email_assets/"+cfg['admin_report_email_file']+".txt", "r")
-	text = text.read()
-	# text = text.format(ext=m['Extension'],days=days_str)
-	html = open("email_assets/"+cfg['admin_report_email_file']+".html", "r")
-	html = html.read()
-	# html = html.format(ext=m['Extension'],days=days_str)
-
-	attachment_filename = report_filename  # In same directory as script
-
-	# Open file in binary mode
-	with open("reports/"+attachment_filename, "rb") as attachment:
-		part_att = MIMEBase("application", "octet-stream") # Add file as application/octet-stream
-		part_att.set_payload(attachment.read())            # Email client can usually download this automatically as attachment
-
-	# Encode file in ASCII characters to send by email    
-	encoders.encode_base64(part_att)
-
-	# Add header as key/value pair to attachment part
-	part_att.add_header(
-		"Content-Disposition",
-		f"attachment; filename= {attachment_filename}",
-	)
-
-	message.attach(MIMEText(text, "plain")) # Add HTML/plain-text parts to MIMEMultipart message
-	message.attach(MIMEText(html, "html"))  # The email client will try to render the last part first
-	message.attach(part_att)                # Attachment File
-
 	try:
+		sender    = cfg['from_address']
+		receivers = cfg['admin_email']
+
+		message            = MIMEMultipart("alternative")
+		message["Subject"] = "Unity Connection PIN Reminder & Report Tool"
+		message["From"]    = sender
+		message["To"]      = ", ".join(receivers)
+
+		text = open(cfg["admin_report_email_file_fqdn_txt"], "r")
+		text = text.read()
+		# text = text.format(ext=m['Extension'],days=days_str)
+		html = open(cfg["admin_report_email_file_fqdn_html"], "r")
+		html = html.read()
+		# html = html.format(ext=m['Extension'],days=days_str)
+
+		attachment_filename = report_filename  # In same directory as script
+
+		# Open file in binary mode
+		with open(os.path.join(cfg["reports_folder_name"], attachment_filename), "rb") as attachment:
+			part_att = MIMEBase("application", "octet-stream") # Add file as application/octet-stream
+			part_att.set_payload(attachment.read())            # Email client can usually download this automatically as attachment
+
+		# Encode file in ASCII characters to send by email    
+		encoders.encode_base64(part_att)
+
+		# Add header as key/value pair to attachment part
+		part_att.add_header(
+			"Content-Disposition",
+			f"attachment; filename= {attachment_filename}",
+		)
+
+		message.attach(MIMEText(text, "plain")) # Add HTML/plain-text parts to MIMEMultipart message
+		message.attach(MIMEText(html, "html"))  # The email client will try to render the last part first
+		message.attach(part_att)                # Attachment File
+
 		smtpObj = smtplib.SMTP(cfg['smtp_server'])
 		smtpObj.sendmail(sender, receivers, message.as_string())         
-		print("Successfully sent email")
+		print(f"Admin email successfully sent to: {receivers}")
 	except Exception as e:
-		print("Error: unable to send email")
-		print(e)
+		print(f"Error: Admin email was not sent: {e}")
 
 def purge_files(retention_days, file_dir, file_ext):
 	try:
@@ -236,6 +282,8 @@ def purge_files(retention_days, file_dir, file_ext):
 
 if __name__ == "__main__":
 	cfg = read_ini("config.ini")
+	validate_ini("config.ini")
+
 	today = datetime.datetime.today()
 	time_start = datetime.datetime.now()
 	print(time_start)
@@ -256,7 +304,7 @@ if __name__ == "__main__":
 	df = pandas.DataFrame(mailboxes)
 	del df["ObjectId"]
 	report_filename = 'ucxn_voicemail_pin_report_'+datetime.datetime.now().strftime("%Y-%m-%d-%I-%M-%S")+'.xlsx'
-	writer = pandas.ExcelWriter('reports/'+report_filename, engine='xlsxwriter')
+	writer = pandas.ExcelWriter(os.path.join(cfg["reports_folder_name"], report_filename), engine='xlsxwriter')
 	# Convert the dataframe to an XlsxWriter Excel object.
 	df.to_excel(writer, sheet_name='Sheet1', index=False)
 	# Dynamically adjust all the column lengths
@@ -272,5 +320,5 @@ if __name__ == "__main__":
 
 	send_admin_email()
 
-	purge_files(cfg['retention_days'], "logs", ".log")
-	purge_files(cfg['retention_days'], "reports", ".xlsx")
+	purge_files(cfg['retention_days'], cfg["logs_folder_name"], ".log")
+	purge_files(cfg['retention_days'], cfg["reports_folder_name"], ".xlsx")
