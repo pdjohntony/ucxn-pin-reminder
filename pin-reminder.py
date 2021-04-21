@@ -14,6 +14,8 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import os
+import logging
+import traceback
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
@@ -34,9 +36,8 @@ headers = {
 
 def read_ini(cfg_file_name):
 	try:
-		if not os.path.isfile(cfg_file_name): # Check if file exists
-			print(f"{cfg_file_name} does not exist!")
-			sys.exit(1)
+		# Check if file exists
+		if not os.path.isfile(cfg_file_name): raise Exception("does not exist!")
 
 		config = configparser.ConfigParser()
 		config.read(cfg_file_name)
@@ -53,13 +54,14 @@ def read_ini(cfg_file_name):
 		cfg["user_reminder_email_file_name"]      = config.get('SMTP', 'user_reminder_email_file')
 		cfg["user_reminder_attachment_file_name"] = config.get('SMTP', 'user_reminder_attachment')
 		cfg["retention_days"]                     = config.get('LOGGING', 'retention_days')
+		cfg["debug_lvl"]                          = config.get('DEBUG', 'debug')
 		cfg["email_assets_folder_name"]           = "email_assets"
 		cfg["reports_folder_name"]                = "reports"
 		cfg["logs_folder_name"]                   = "logs"
 
 		return cfg
 	except Exception as e:
-		print(f"Error in {cfg_file_name} file: {e}")
+		logger.error(f"Error in {cfg_file_name} file: {e}")
 		sys.exit(1)
 
 def validate_ini(cfg_file_name):
@@ -67,11 +69,11 @@ def validate_ini(cfg_file_name):
 		for k,v in cfg.items(): # Check for blank values
 			if v == "": raise Exception(f"{k} is blank")
 
-		cfg["base_url"]                 = "https://" + cfg["base_url"]
-		cfg["creds"]                    = (cfg["username"], cfg["password"])
+		cfg["base_url"]        = "https://" + cfg["base_url"]
+		cfg["creds"]           = (cfg["username"], cfg["password"])
 
-		cfg["email_intervals"]          = [x.strip() for x in cfg["email_intervals"].split(',')] # splits into list, then strips whitespace
-		cfg["admin_email"]              = [x.strip() for x in cfg["admin_email"].split(',')]
+		cfg["email_intervals"] = [x.strip() for x in cfg["email_intervals"].split(',')] # splits into list, then strips whitespace
+		cfg["admin_email"]     = [x.strip() for x in cfg["admin_email"].split(',')]
 
 		if not os.path.isdir(cfg["email_assets_folder_name"]): os.mkdir(cfg["email_assets_folder_name"])
 		if not os.path.isdir(cfg["reports_folder_name"]):      os.mkdir(cfg["reports_folder_name"])
@@ -86,19 +88,79 @@ def validate_ini(cfg_file_name):
 		if not os.path.isfile(cfg["user_reminder_email_file_fqdn_txt"]): raise Exception(f"{cfg['user_reminder_email_file_fqdn_txt']} does not exist!")
 		if not os.path.isfile(cfg["user_reminder_email_file_fqdn_html"]): raise Exception(f"{cfg['user_reminder_email_file_fqdn_html']} does not exist!")
 
-		cfg["user_reminder_attachment_file_fqdn"]  = os.path.join(cfg["email_assets_folder_name"], cfg["user_reminder_attachment_file_name"])
+		cfg["user_reminder_attachment_file_fqdn"] = os.path.join(cfg["email_assets_folder_name"], cfg["user_reminder_attachment_file_name"])
 		if not os.path.isfile(cfg["user_reminder_attachment_file_fqdn"]): raise Exception(f"{cfg['user_reminder_attachment_file_fqdn']} does not exist!")
 		
-		cfg["retention_days"]           = int(cfg["retention_days"])
+		cfg["retention_days"] = int(cfg["retention_days"])
 
-		for k,v in cfg.items(): print(f"{k}={v}")
+		if cfg["debug_lvl"] == "1": # Turn off console debug msgs
+			for handler in logger.handlers:
+				if type(handler) == logging.StreamHandler:
+					handler.setLevel(logging.INFO)
+
+		for k,v in cfg.items(): logger.debug(f"{k}={v}")
 		return cfg
 	except ValueError:
-		print(f"Error in config file: retention_days must be a number not a string")
+		logger.error(f"Error in config file: retention_days must be a number not a string")
 		sys.exit(1)
 	except Exception as e:
-		print(f"Error in {cfg_file_name} file: {e}")
+		logger.error(f"Error in {cfg_file_name} file: {e}")
 		sys.exit(1)
+
+def init_logger(console_debug_lvl = '1'):
+	try:
+		# Log File Variables
+		log_file_dir = "logs"
+		log_file_dir = os.path.join(os.getcwd(), log_file_dir)
+		log_file_name = 'ucxn-pin-reminder'
+		log_file_ext = '.log'
+		log_file_date = datetime.datetime.now().strftime("%Y%m%d")
+		log_file_time = datetime.datetime.now().strftime("%H%M%S")
+		log_file_fullname = (log_file_name + '-' + log_file_date + '-' + log_file_time + log_file_ext)
+		log_file_actual = os.path.join(log_file_dir, log_file_fullname)
+
+		# Create Log File directory if it does not exist
+		if not os.path.exists(log_file_dir): os.mkdir(log_file_dir)
+
+		# Global log FILE settings
+		log_file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(module)s -> %(message)s')
+		log_file_handler   = logging.FileHandler(log_file_actual)
+		log_file_handler.setFormatter(log_file_formatter)
+
+		# Global log CONSOLE settings
+		log_console_formatter = logging.Formatter('%(asctime)s - %(message)s')
+		log_console_handler   = logging.StreamHandler()
+		log_console_handler.setFormatter(log_console_formatter)
+
+		if console_debug_lvl == '2':
+			# Debug writes to log file AND displays in console
+			log_console_handler.setLevel(logging.DEBUG)
+			logger.setLevel(logging.DEBUG)
+		elif console_debug_lvl == '1':
+			# Debug only writes to log file, does not display in console
+			log_console_handler.setLevel(logging.INFO)
+			logger.setLevel(logging.DEBUG)
+		else:
+			# Debug is completely off, doesn't write to log file
+			log_console_handler.setLevel(logging.INFO)
+			logger.setLevel(logging.INFO)
+
+		# Adds configurations to global log
+		logger.addHandler(log_file_handler)
+		logger.addHandler(log_console_handler)
+
+	except IOError as e:
+		errOut = "** ERROR: Unable to create or open log file %s" % log_file_name
+		if e.errno == 2:    errOut += "- No such directory **"
+		elif e.errno == 13: errOut += " - Permission Denied **"
+		elif e.errno == 24: errOut += " - Too many open files **"
+		else:
+			errOut += " - Unhandled Exception-> %s **" % str(e)
+			sys.stderr.write(errOut + "\n")
+			traceback.print_exc()
+
+	except Exception:
+		traceback.print_exc()
 
 def get_auth_rules():
 	url       = f"{cfg['base_url']}/vmrest/authenticationrules"
@@ -120,11 +182,11 @@ def get_mailboxes():
 	response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 	resp_json = response.json()
 	total_mailboxes = resp_json['@total']
-	print(f"Total Mailboxes: {total_mailboxes}")
+	logger.debug(f"Total Mailboxes: {total_mailboxes}")
 	rowsPerPage = 100
 	total_pages = math.ceil(int(total_mailboxes) / rowsPerPage)
-	print(f"total_pages = {total_pages}")
-	print("Starting page loop")
+	logger.debug(f"total_pages = {total_pages}")
+	logger.debug("Starting page loop")
 
 	mailboxes = []
 	for pageNumber in tqdm(range(total_pages)):
@@ -167,12 +229,12 @@ def get_pin_data():
 	# print(df[['Alias', 'PIN Doesnt Expire', 'PIN Must Change', 'Date Last Changed', 'Expiration Days', 'Expiration Date', 'Days Until Expired']])
 	return mailboxes
 
-def analyze_pin_data():
+def send_user_email():
 	for m in tqdm(mailboxes):
 		try:
 			if m["PIN Doesnt Expire"] == "false" and m["Email Address"] != "":
 				if any(str(m["Days Until Expired"]) in s for s in cfg['email_intervals']):
-					print(f"\nSetting up email for Alias={m['Alias']}")
+					logger.debug(f"\nSetting up email for Alias={m['Alias']}")
 
 					if m["Days Until Expired"] > 1:
 						days_str = f"{m['Days Until Expired']} days"
@@ -218,9 +280,9 @@ def analyze_pin_data():
 
 					smtpObj = smtplib.SMTP(cfg['smtp_server'])
 					smtpObj.sendmail(sender, receivers, message.as_string())         
-					print(f"Successfully sent email to={receivers}")
+					logger.debug(f"Successfully sent email to={receivers}")
 		except Exception as e:
-			print(f"Error: User email was not sent: {e}")
+			logger.error(f"Error: User email was not sent: {e}")
 
 	return mailboxes
 
@@ -263,14 +325,14 @@ def send_admin_email():
 
 		smtpObj = smtplib.SMTP(cfg['smtp_server'])
 		smtpObj.sendmail(sender, receivers, message.as_string())         
-		print(f"Admin email successfully sent to: {receivers}")
+		logger.info(f"Admin email successfully sent to: {receivers}")
 	except Exception as e:
-		print(f"Error: Admin email was not sent: {e}")
+		logger.error(f"Error: Admin email was not sent: {e}")
 
 def purge_files(retention_days, file_dir, file_ext):
 	try:
 		if retention_days > 0:
-			print(f"Purging {file_ext} files in {file_dir} folder older than {retention_days} days...")
+			logger.debug(f"Purging {file_ext} files in {file_dir} folder older than {retention_days} days...")
 			retention_sec = retention_days*86400
 			now = time.time()
 			for file in os.listdir(file_dir):
@@ -278,31 +340,35 @@ def purge_files(retention_days, file_dir, file_ext):
 					file_fullpath = os.path.join(file_dir, file)
 					if os.stat(file_fullpath).st_mtime < (now-retention_sec):
 						os.remove(file_fullpath)
-						print(f"{file} has been deleted")
+						logger.debug(f"{file} has been deleted")
 	except Exception as e:
-		print("File purge error: " + str(e))
+		logger.debug("File purge error: " + str(e))
 
 if __name__ == "__main__":
+	today = datetime.datetime.today()
+	time_start = datetime.datetime.now()
+
+	# Initiate logger
+	logger = logging.getLogger('global-log')
+	init_logger(console_debug_lvl="2")
+
 	cfg = read_ini("config.ini")
 	validate_ini("config.ini")
 
-	today = datetime.datetime.today()
-	time_start = datetime.datetime.now()
-	print(time_start)
-
-	print("Getting auth rules...")
+	logger.info("Step 1 of 6: Getting auth rules...")
 	authrules = get_auth_rules()
 
-	print("Getting mailboxes...")
+	logger.info("Step 2 of 6: Getting mailboxes...")
 	mailboxes = get_mailboxes()
 	
-	print("Getting PIN data...")
+	logger.info("Step 3 of 6: Getting PIN data...")
 	get_pin_data()
 
-	print("Analyzing PIN data...")
-	analyze_pin_data()
+	logger.info("Step 4 of 6: Sending User Emails...")
+	send_user_email()
 
-	# Create a Pandas Excel writer using XlsxWriter as the engine.
+	logger.info("Step 5 of 6: Saving Report...")
+	# Create a Pandas Excel writer using XlsxWriter engine.
 	df = pandas.DataFrame(mailboxes)
 	del df["ObjectId"]
 	report_filename = 'ucxn_voicemail_pin_report_'+datetime.datetime.now().strftime("%Y-%m-%d-%I-%M-%S")+'.xlsx'
@@ -315,12 +381,15 @@ if __name__ == "__main__":
 		col_idx = df.columns.get_loc(column)
 		writer.sheets['Sheet1'].set_column(col_idx, col_idx, column_length)
 	writer.save() # Close the Pandas Excel writer and output the Excel file.
-	print(f"Report saved: {report_filename}")
+	logger.info(f"Report saved: {report_filename}")
 
-	time_end = datetime.datetime.now()
-	print(time_end)
+	time_end   = datetime.datetime.now()
+	time_total = divmod((time_end - time_start).seconds, 60)
 
+	logger.info("Step 6 of 6: Sending Admin Email...")
 	send_admin_email()
+
+	logger.debug(f"Tool Runtime: {time_total[0]} minutes {time_total[1]} seconds")
 
 	purge_files(cfg['retention_days'], cfg["logs_folder_name"], ".log")
 	purge_files(cfg['retention_days'], cfg["reports_folder_name"], ".xlsx")
