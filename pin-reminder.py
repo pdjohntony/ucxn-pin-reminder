@@ -1,3 +1,12 @@
+# -------------------------------------------------#
+# Application:  UCXN PIN Reminder
+# Author:       Phill Johntony (phidjohn@cdw.com)
+# Summary:
+# 	Collects mailbox PIN data from Unity Connection
+#	Sends an expiration warning email to the end user
+#  Creates an Excel report
+#  Sends email with report to admins
+# ------------------------------------------------#
 import sys
 import datetime
 import time
@@ -22,11 +31,11 @@ disable_warnings(InsecureRequestWarning)
 
 #! TO DO LIST
 # CLEAN THINGS UP
-# IMPLEMENT LOGGER
 # ADD IF EMAIL WAS SENT COLUMN TO MAILBOX DF
 # CONFIGURE ADMIN EMAIL INTERVALS
 # COLLECT EMAIL SENT STATS FOR ADMIN REPORT/EMAIL
 # UPDATE README
+# Move report generation to function
 
 headers = {
 	"content-type": "application/json",
@@ -35,6 +44,17 @@ headers = {
 }
 
 def read_ini(cfg_file_name):
+	"""
+	Reads config file.
+
+	If successful, returns file contents as a dictionary. Otherwise raise an exception.
+
+	Args:
+		cfg_file_name (str): file name to read
+
+	Returns:
+		cfg (dict): config file contents
+	"""
 	try:
 		# Check if file exists
 		if not os.path.isfile(cfg_file_name): raise Exception("does not exist!")
@@ -65,6 +85,24 @@ def read_ini(cfg_file_name):
 		sys.exit(1)
 
 def validate_ini(cfg_file_name):
+	"""
+	Formats and validates config elements
+
+	- Checks for blank values
+	- Prefixes https to ucxn server ip/fqdn
+	- Creates credential tuple
+	- Splits strings with commas into list, then strips leading/trailing whitespace
+	- Checks for and creates directories
+	- Checks for email assets files
+	- Converts retention_days from str to int
+	- Changes debug level from default 2 to config value
+
+	Args:
+		cfg_file_name (str): file name for print
+
+	Returns:
+		cfg (dict): config file contents
+	"""
 	try:
 		for k,v in cfg.items(): # Check for blank values
 			if v == "": raise Exception(f"{k} is blank")
@@ -108,6 +146,18 @@ def validate_ini(cfg_file_name):
 		sys.exit(1)
 
 def init_logger(console_debug_lvl = '1'):
+	"""
+	Initiates logger
+
+	- Creates log directory if none exists
+	- Creates two log handlers
+		- One for the log file
+		- Another for the console
+	- Sets debug level
+
+	Args:
+		console_debug_lvl (str): 0 off, 1 on prints only in log file, 2 on prints to log file & console
+	"""
 	try:
 		# Log File Variables
 		log_file_dir = "logs"
@@ -163,78 +213,135 @@ def init_logger(console_debug_lvl = '1'):
 		traceback.print_exc()
 
 def get_auth_rules():
-	url       = f"{cfg['base_url']}/vmrest/authenticationrules"
-	response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
-	resp_json = response.json()
+	"""
+	GETs auth rules from UCXN
 
-	authrules = []
-	for r in resp_json["AuthenticationRule"]:
-		authrules.append({
-			"ObjectId"   : r["ObjectId"],
-			"DisplayName": r["DisplayName"],
-			"MaxDays"    : r["MaxDays"]
-		})
-	return authrules
+	If successful, returns response as a list. Otherwise raise an exception.
+
+	Returns:
+		authrules (list): with each rule as a dict
+	"""
+	try:
+		url       = f"{cfg['base_url']}/vmrest/authenticationrules"
+		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+		resp_json = response.json()
+
+		authrules = []
+		for r in resp_json["AuthenticationRule"]:
+			authrules.append({
+				"ObjectId"   : r["ObjectId"],
+				"DisplayName": r["DisplayName"],
+				"MaxDays"    : r["MaxDays"]
+			})
+		return authrules
+	except Exception as e:
+		logger.error(f"Error: {e}")
+		sys.exit(1)
 
 def get_mailboxes():
-	#! PAGINATION works, but needs more thorough testing
-	url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage=0"
-	response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
-	resp_json = response.json()
-	total_mailboxes = resp_json['@total']
-	logger.debug(f"Total Mailboxes: {total_mailboxes}")
-	rowsPerPage = 100
-	total_pages = math.ceil(int(total_mailboxes) / rowsPerPage)
-	logger.debug(f"total_pages = {total_pages}")
-	logger.debug("Starting page loop")
+	"""
+	GETs list of mailboxes
 
-	mailboxes = []
-	for pageNumber in tqdm(range(total_pages)):
-		# print(f"pageNumber = {pageNumber+1}")
-		url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage={rowsPerPage}&pageNumber={pageNumber+1}"
+	- Initial GET returns total number of mailboxes
+	- Calculates how many GETs required to list all mailboxes at 100 per page
+	- Performs GET pagination loop
+
+	If successful, returns response as a list. Otherwise raise an exception.
+
+	Returns:
+		mailboxes (list): with each mailbox as a dict
+	"""
+	try:
+		#! PAGINATION works, but needs more thorough testing
+		url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage=0"
 		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 		resp_json = response.json()
+		total_mailboxes = resp_json['@total']
+		logger.debug(f"Total Mailboxes: {total_mailboxes}")
+		rowsPerPage = 100
+		total_pages = math.ceil(int(total_mailboxes) / rowsPerPage)
+		logger.debug(f"total_pages = {total_pages}")
+		logger.debug("Starting page loop")
 
-		for m in resp_json["User"]:
-			mailboxes.append({
-				"ObjectId"     : m["ObjectId"],
-				"Alias"        : m["Alias"],
-				"Display Name" : m["DisplayName"],
-				"Extension"    : m["DtmfAccessId"],
-				"Email Address": m.get("EmailAddress", "")
-			})
-	return mailboxes
+		mailboxes = []
+		for pageNumber in tqdm(range(total_pages)):
+			# print(f"pageNumber = {pageNumber+1}")
+			url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage={rowsPerPage}&pageNumber={pageNumber+1}"
+			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+			resp_json = response.json()
+
+			for m in resp_json["User"]:
+				mailboxes.append({
+					"ObjectId"     : m["ObjectId"],
+					"Alias"        : m["Alias"],
+					"Display Name" : m["DisplayName"],
+					"Extension"    : m["DtmfAccessId"],
+					"Email Address": m.get("EmailAddress", "")
+				})
+		return mailboxes
+	except Exception as e:
+		logger.error(f"Error: {e}")
+		sys.exit(1)
 
 def get_pin_data():
-	for m in tqdm(mailboxes):
-		url       = f"{cfg['base_url']}/vmrest/users/{m['ObjectId']}/credential/pin"
-		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
-		resp_json = response.json()
+	#! Maybe move try/except inside the for loop so only individual mailboxes fail and not all of them?
+	"""
+	GETs the mailbox PIN data
 
-		for r in authrules:
-			if resp_json["CredentialPolicyObjectId"] == r["ObjectId"]:
-				m["Auth Rule"]       = r["DisplayName"]
-				m["Expiration Days"] = r["MaxDays"]
-				break
-		m["PIN Doesnt Expire"]  = resp_json["DoesntExpire"]
-		m["PIN Must Change"]    = resp_json["CredMustChange"]
-		m["Date Last Changed"]  = datetime.datetime.strptime(resp_json["TimeChanged"], "%Y-%m-%d %H:%M:%S.%f")
-		m["Expiration Date"]    = m["Date Last Changed"] + datetime.timedelta(days=int(m["Expiration Days"]))
-		m["Days Until Expired"] = m["Expiration Date"] - today
-		m["Days Until Expired"] = m["Days Until Expired"].days
-		m["Date Last Changed"]  = m["Date Last Changed"].date() # Convert datetime to date
-		m["Expiration Date"]    = m["Expiration Date"].date()   # Convert datetime to date
+	- Performs individual GETs for each mailbox to get the PIN data
+	- Caclulates PIN expiration dates
 
-	# df = pandas.DataFrame(mailboxes)
-	# print(df[['Alias', 'PIN Doesnt Expire', 'PIN Must Change', 'Date Last Changed', 'Expiration Days', 'Expiration Date', 'Days Until Expired']])
-	return mailboxes
+	If successful, returns updated mailboxes (list[dict]). Otherwise raise an exception.
+
+	Returns:
+		mailboxes (dict)
+	"""
+	try:
+		for m in tqdm(mailboxes):
+			url       = f"{cfg['base_url']}/vmrest/users/{m['ObjectId']}/credential/pin"
+			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+			resp_json = response.json()
+
+			for r in authrules:
+				if resp_json["CredentialPolicyObjectId"] == r["ObjectId"]:
+					m["Auth Rule"]       = r["DisplayName"]
+					m["Expiration Days"] = r["MaxDays"]
+					break
+			m["PIN Doesnt Expire"]  = resp_json["DoesntExpire"]
+			m["PIN Must Change"]    = resp_json["CredMustChange"]
+			m["Date Last Changed"]  = datetime.datetime.strptime(resp_json["TimeChanged"], "%Y-%m-%d %H:%M:%S.%f")
+			m["Expiration Date"]    = m["Date Last Changed"] + datetime.timedelta(days=int(m["Expiration Days"]))
+			m["Days Until Expired"] = m["Expiration Date"] - today
+			m["Days Until Expired"] = m["Days Until Expired"].days
+			m["Date Last Changed"]  = m["Date Last Changed"].date() # Convert datetime to date
+			m["Expiration Date"]    = m["Expiration Date"].date()   # Convert datetime to date
+
+		# df = pandas.DataFrame(mailboxes)
+		# print(df[['Alias', 'PIN Doesnt Expire', 'PIN Must Change', 'Date Last Changed', 'Expiration Days', 'Expiration Date', 'Days Until Expired']])
+		return mailboxes
+	except Exception as e:
+		logger.error(f"Error: {e}")
+		sys.exit(1)
 
 def send_user_email():
+	#! should update mailbox dict with time last email sent
+	"""
+	Sends user an expiration email if:
+
+	- PIN Never Expires == false
+	- Mailbox has an email address configured
+	- If Days Until Expired matches one of the configured email intervals
+
+	If successful, returns updated mailboxes (list[dict]). Otherwise raise an exception.
+
+	Returns:
+		mailboxes (dict)
+	"""
 	for m in tqdm(mailboxes):
 		try:
 			if m["PIN Doesnt Expire"] == "false" and m["Email Address"] != "":
 				if any(str(m["Days Until Expired"]) in s for s in cfg['email_intervals']):
-					logger.debug(f"\nSetting up email for Alias={m['Alias']}")
+					logger.debug(f"Setting up email for Alias={m['Alias']}")
 
 					if m["Days Until Expired"] > 1:
 						days_str = f"{m['Days Until Expired']} days"
@@ -287,6 +394,13 @@ def send_user_email():
 	return mailboxes
 
 def send_admin_email():
+	#! Needs to format vars to include number of emails sent and other stats
+	"""
+	Sends admin email
+
+	Attaches generated report
+
+	"""
 	try:
 		sender    = cfg['from_address']
 		receivers = cfg['admin_email']
@@ -330,6 +444,9 @@ def send_admin_email():
 		logger.error(f"Error: Admin email was not sent: {e}")
 
 def purge_files(retention_days, file_dir, file_ext):
+	"""
+	Purges files past a certain date
+	"""
 	try:
 		if retention_days > 0:
 			logger.debug(f"Purging {file_ext} files in {file_dir} folder older than {retention_days} days...")
