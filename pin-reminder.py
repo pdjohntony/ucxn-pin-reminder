@@ -176,6 +176,8 @@ def analyze_pin_data():
 
 					if m["Days Until Expired"] > 1:
 						days_str = f"{m['Days Until Expired']} days"
+					elif m["Days Until Expired"] == 0:
+						days_str = "today"
 					else:
 						days_str = f"{m['Days Until Expired']} day"
 
