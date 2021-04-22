@@ -1,6 +1,7 @@
 Unity Connection PIN Reminder & Report Tool
 
 Tool Runtime = {time_total}
-User Emails Sent = {total_emails_sent}
+Total Emails Sent = {total_emails_sent}
+Total Mailbox Errors = {total_mailbox_errors}
 
 See attached report for more details

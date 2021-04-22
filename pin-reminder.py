@@ -253,7 +253,6 @@ def get_mailboxes():
 		mailboxes (list): with each mailbox as a dict
 	"""
 	try:
-		#! PAGINATION works, but needs more thorough testing
 		url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage=0"
 		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 		if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
@@ -288,7 +287,6 @@ def get_mailboxes():
 		sys.exit(1)
 
 def get_pin_data():
-	#! Maybe move try/except inside the for loop so only individual mailboxes fail and not all of them?
 	"""
 	GETs the mailbox PIN data
 
@@ -300,8 +298,8 @@ def get_pin_data():
 	Returns:
 		mailboxes (dict)
 	"""
-	try:
-		for m in tqdm(mailboxes):
+	for m in tqdm(mailboxes):
+		try:
 			url       = f"{cfg['base_url']}/vmrest/users/{m['ObjectId']}/credential/pin"
 			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
@@ -322,13 +320,13 @@ def get_pin_data():
 			m["Expiration Date"]       = m["Expiration Date"].date()   # Convert datetime to date
 			m["Expiration Email Sent"] = "false"
 
-		# df = pandas.DataFrame(mailboxes)
-		# print(df[['Alias', 'PIN Doesnt Expire', 'PIN Must Change', 'Date Last Changed', 'Expiration Days', 'Expiration Date', 'Days Until Expired']])
-		return mailboxes
-	except Exception as e:
-		logger.error(f"Error: {e}")
-		send_admin_email_error()
-		sys.exit(1)
+		except Exception as e:
+			logger.error(f"Error: {e}")
+			m["Auth Rule"] = "ERROR"
+			global total_mailbox_errors
+			total_mailbox_errors += 1
+	
+	return mailboxes
 
 def send_user_email():
 	"""
@@ -345,6 +343,7 @@ def send_user_email():
 	"""
 	for m in tqdm(mailboxes):
 		try:
+			if m["Auth Rule"] == "ERROR": continue # skips errored mailbox
 			if m["PIN Doesnt Expire"] == "false" and m["Email Address"] != "":
 				if any(str(m["Days Until Expired"]) in s for s in cfg['email_intervals']):
 					logger.debug(f"Setting up email for Alias={m['Alias']}")
@@ -420,10 +419,10 @@ def send_admin_email():
 
 		text = open(cfg["admin_report_email_file_fqdn_txt"], "r")
 		text = text.read()
-		text = text.format(time_total=f"{time_total[0]} minutes {time_total[1]} seconds", total_emails_sent=total_user_emails_sent)
+		text = text.format(time_total=f"{time_total[0]} minutes {time_total[1]} seconds", total_emails_sent=total_user_emails_sent, total_mailbox_errors=total_mailbox_errors)
 		html = open(cfg["admin_report_email_file_fqdn_html"], "r")
 		html = html.read()
-		html = html.format(time_total=f"{time_total[0]} minutes {time_total[1]} seconds", total_emails_sent=total_user_emails_sent)
+		html = html.format(time_total=f"{time_total[0]} minutes {time_total[1]} seconds", total_emails_sent=total_user_emails_sent, total_mailbox_errors=total_mailbox_errors)
 
 		attachment_filename = report_filename  # In same directory as script
 
@@ -551,6 +550,7 @@ if __name__ == "__main__":
 	today = datetime.datetime.today()
 	time_start = datetime.datetime.now()
 	total_user_emails_sent = 0
+	total_mailbox_errors   = 0
 
 	# Initiate logger
 	logger = logging.getLogger('global-log')
