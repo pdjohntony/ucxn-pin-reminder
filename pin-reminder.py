@@ -31,9 +31,7 @@ disable_warnings(InsecureRequestWarning)
 
 #! TO DO LIST
 # CLEAN THINGS UP
-# ADD IF EMAIL WAS SENT COLUMN TO MAILBOX DF
 # CONFIGURE ADMIN EMAIL INTERVALS
-# COLLECT EMAIL SENT STATS FOR ADMIN REPORT/EMAIL
 # UPDATE README
 
 headers = {
@@ -314,14 +312,15 @@ def get_pin_data():
 					m["Auth Rule"]       = r["DisplayName"]
 					m["Expiration Days"] = r["MaxDays"]
 					break
-			m["PIN Doesnt Expire"]  = resp_json["DoesntExpire"]
-			m["PIN Must Change"]    = resp_json["CredMustChange"]
-			m["Date Last Changed"]  = datetime.datetime.strptime(resp_json["TimeChanged"], "%Y-%m-%d %H:%M:%S.%f")
-			m["Expiration Date"]    = m["Date Last Changed"] + datetime.timedelta(days=int(m["Expiration Days"]))
-			m["Days Until Expired"] = m["Expiration Date"] - today
-			m["Days Until Expired"] = m["Days Until Expired"].days
-			m["Date Last Changed"]  = m["Date Last Changed"].date() # Convert datetime to date
-			m["Expiration Date"]    = m["Expiration Date"].date()   # Convert datetime to date
+			m["PIN Doesnt Expire"]     = resp_json["DoesntExpire"]
+			m["PIN Must Change"]       = resp_json["CredMustChange"]
+			m["Date Last Changed"]     = datetime.datetime.strptime(resp_json["TimeChanged"], "%Y-%m-%d %H:%M:%S.%f")
+			m["Expiration Date"]       = m["Date Last Changed"] + datetime.timedelta(days=int(m["Expiration Days"]))
+			m["Days Until Expired"]    = m["Expiration Date"] - today
+			m["Days Until Expired"]    = m["Days Until Expired"].days
+			m["Date Last Changed"]     = m["Date Last Changed"].date() # Convert datetime to date
+			m["Expiration Date"]       = m["Expiration Date"].date()   # Convert datetime to date
+			m["Expiration Email Sent"] = "false"
 
 		# df = pandas.DataFrame(mailboxes)
 		# print(df[['Alias', 'PIN Doesnt Expire', 'PIN Must Change', 'Date Last Changed', 'Expiration Days', 'Expiration Date', 'Days Until Expired']])
@@ -332,7 +331,6 @@ def get_pin_data():
 		sys.exit(1)
 
 def send_user_email():
-	#! should update mailbox dict with time last email sent
 	"""
 	Sends user an expiration email if:
 
@@ -394,15 +392,17 @@ def send_user_email():
 					message.attach(part_att)                # Attachment File
 
 					smtpObj = smtplib.SMTP(cfg['smtp_server'])
-					smtpObj.sendmail(sender, receivers, message.as_string())         
+					smtpObj.sendmail(sender, receivers, message.as_string())
+					m["Expiration Email Sent"] = "true"
 					logger.debug(f"Successfully sent email to={receivers}")
+					global total_user_emails_sent
+					total_user_emails_sent += 1
 		except Exception as e:
 			logger.error(f"Error: User email was not sent: {e}")
 
 	return mailboxes
 
 def send_admin_email():
-	#! Needs to format vars to include number of emails sent and other stats
 	"""
 	Sends admin email
 
@@ -420,10 +420,10 @@ def send_admin_email():
 
 		text = open(cfg["admin_report_email_file_fqdn_txt"], "r")
 		text = text.read()
-		# text = text.format(ext=m['Extension'],days=days_str)
+		text = text.format(time_total=f"{time_total[0]} minutes {time_total[1]} seconds", total_emails_sent=total_user_emails_sent)
 		html = open(cfg["admin_report_email_file_fqdn_html"], "r")
 		html = html.read()
-		# html = html.format(ext=m['Extension'],days=days_str)
+		html = html.format(time_total=f"{time_total[0]} minutes {time_total[1]} seconds", total_emails_sent=total_user_emails_sent)
 
 		attachment_filename = report_filename  # In same directory as script
 
@@ -446,7 +446,7 @@ def send_admin_email():
 		message.attach(part_att)                # Attachment File
 
 		smtpObj = smtplib.SMTP(cfg['smtp_server'])
-		smtpObj.sendmail(sender, receivers, message.as_string())         
+		smtpObj.sendmail(sender, receivers, message.as_string())
 		logger.info(f"Admin email successfully sent to: {receivers}")
 	except Exception as e:
 		logger.error(f"Error: Admin email was not sent: {e}")
@@ -491,7 +491,7 @@ def send_admin_email_error():
 		message.attach(part_att)                # Attachment File
 
 		smtpObj = smtplib.SMTP(cfg['smtp_server'])
-		smtpObj.sendmail(sender, receivers, message.as_string())         
+		smtpObj.sendmail(sender, receivers, message.as_string())
 		logger.info(f"Admin error email successfully sent to: {receivers}")
 	except Exception as e:
 		logger.error(f"Error: Admin error email was not sent: {e}")
@@ -550,6 +550,7 @@ def purge_files(retention_days, file_dir, file_ext):
 if __name__ == "__main__":
 	today = datetime.datetime.today()
 	time_start = datetime.datetime.now()
+	total_user_emails_sent = 0
 
 	# Initiate logger
 	logger = logging.getLogger('global-log')
@@ -573,11 +574,12 @@ if __name__ == "__main__":
 	logger.info("Step 5 of 6: Saving Report...")
 	report_filename = generate_report()
 
+	time_end   = datetime.datetime.now()
+	time_total = divmod((time_end - time_start).seconds, 60)
+
 	logger.info("Step 6 of 6: Sending Admin Email...")
 	send_admin_email()
 
-	time_end   = datetime.datetime.now()
-	time_total = divmod((time_end - time_start).seconds, 60)
 	logger.debug(f"Tool Runtime: {time_total[0]} minutes {time_total[1]} seconds")
 
 	purge_files(cfg['retention_days'], cfg["logs_folder_name"], ".log")
