@@ -136,7 +136,7 @@ def validate_ini(cfg_file_name):
 				if type(handler) == logging.StreamHandler:
 					handler.setLevel(logging.INFO)
 
-		for k,v in cfg.items(): logger.debug(f"{k}={v}")
+		# for k,v in cfg.items(): logger.debug(f"{k}={v}")
 		return cfg
 	except ValueError:
 		logger.error(f"Error in config file: retention_days must be a number not a string")
@@ -166,6 +166,8 @@ def init_logger(console_debug_lvl = '1'):
 		log_file_ext = '.log'
 		log_file_date = datetime.datetime.now().strftime("%Y%m%d")
 		log_file_time = datetime.datetime.now().strftime("%H%M%S")
+		global log_file_fullname
+		global log_file_actual
 		log_file_fullname = (log_file_name + '-' + log_file_date + '-' + log_file_time + log_file_ext)
 		log_file_actual = os.path.join(log_file_dir, log_file_fullname)
 
@@ -224,6 +226,7 @@ def get_auth_rules():
 	try:
 		url       = f"{cfg['base_url']}/vmrest/authenticationrules"
 		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+		if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 		resp_json = response.json()
 
 		authrules = []
@@ -236,6 +239,7 @@ def get_auth_rules():
 		return authrules
 	except Exception as e:
 		logger.error(f"Error: {e}")
+		send_admin_email_error()
 		sys.exit(1)
 
 def get_mailboxes():
@@ -255,6 +259,7 @@ def get_mailboxes():
 		#! PAGINATION works, but needs more thorough testing
 		url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage=0"
 		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+		if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 		resp_json = response.json()
 		total_mailboxes = resp_json['@total']
 		logger.debug(f"Total Mailboxes: {total_mailboxes}")
@@ -268,6 +273,7 @@ def get_mailboxes():
 			# print(f"pageNumber = {pageNumber+1}")
 			url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage={rowsPerPage}&pageNumber={pageNumber+1}"
 			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 			resp_json = response.json()
 
 			for m in resp_json["User"]:
@@ -281,6 +287,7 @@ def get_mailboxes():
 		return mailboxes
 	except Exception as e:
 		logger.error(f"Error: {e}")
+		send_admin_email_error()
 		sys.exit(1)
 
 def get_pin_data():
@@ -300,6 +307,7 @@ def get_pin_data():
 		for m in tqdm(mailboxes):
 			url       = f"{cfg['base_url']}/vmrest/users/{m['ObjectId']}/credential/pin"
 			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 			resp_json = response.json()
 
 			for r in authrules:
@@ -321,6 +329,7 @@ def get_pin_data():
 		return mailboxes
 	except Exception as e:
 		logger.error(f"Error: {e}")
+		send_admin_email_error()
 		sys.exit(1)
 
 def send_user_email():
@@ -442,6 +451,51 @@ def send_admin_email():
 		logger.info(f"Admin email successfully sent to: {receivers}")
 	except Exception as e:
 		logger.error(f"Error: Admin email was not sent: {e}")
+
+def send_admin_email_error():
+	"""
+	Sends admin email if a crash error occurs
+
+	Attaches log file
+
+	"""
+	try:
+		sender    = cfg['from_address']
+		receivers = cfg['admin_email']
+
+		message            = MIMEMultipart("alternative")
+		message["Subject"] = "ERROR - Unity Connection PIN Reminder & Report Tool"
+		message["From"]    = sender
+		message["To"]      = ", ".join(receivers)
+
+		text = "An error has occurred, see attached log for more details..."
+		html = "An error has occurred, see attached log for more details..."
+
+		attachment_filename = log_file_fullname  # In same directory as script
+
+		# Open file in binary mode
+		with open(log_file_actual, "rb") as attachment:
+			part_att = MIMEBase("application", "octet-stream") # Add file as application/octet-stream
+			part_att.set_payload(attachment.read())            # Email client can usually download this automatically as attachment
+
+		# Encode file in ASCII characters to send by email    
+		encoders.encode_base64(part_att)
+
+		# Add header as key/value pair to attachment part
+		part_att.add_header(
+			"Content-Disposition",
+			f"attachment; filename= {attachment_filename}",
+		)
+
+		message.attach(MIMEText(text, "plain")) # Add HTML/plain-text parts to MIMEMultipart message
+		message.attach(MIMEText(html, "html"))  # The email client will try to render the last part first
+		message.attach(part_att)                # Attachment File
+
+		smtpObj = smtplib.SMTP(cfg['smtp_server'])
+		smtpObj.sendmail(sender, receivers, message.as_string())         
+		logger.info(f"Admin error email successfully sent to: {receivers}")
+	except Exception as e:
+		logger.error(f"Error: Admin error email was not sent: {e}")
 
 def purge_files(retention_days, file_dir, file_ext):
 	"""
