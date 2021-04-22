@@ -7,6 +7,7 @@
 #  Creates an Excel report
 #  Sends email with report to admins
 # ------------------------------------------------#
+import _version as version_info
 import sys
 import datetime
 import time
@@ -30,9 +31,9 @@ from urllib3.exceptions import InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
 
 #! TO DO LIST
-# CLEAN THINGS UP
 # CONFIGURE ADMIN EMAIL INTERVALS
 # UPDATE README
+# Improve report formatting
 
 headers = {
 	"content-type": "application/json",
@@ -257,6 +258,7 @@ def get_mailboxes():
 		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 		if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 		resp_json = response.json()
+		global total_mailboxes
 		total_mailboxes = resp_json['@total']
 		logger.debug(f"Total Mailboxes: {total_mailboxes}")
 		rowsPerPage = 100
@@ -419,10 +421,20 @@ def send_admin_email():
 
 		text = open(cfg["admin_report_email_file_fqdn_txt"], "r")
 		text = text.read()
-		text = text.format(time_total=f"{time_total[0]} minutes {time_total[1]} seconds", total_emails_sent=total_user_emails_sent, total_mailbox_errors=total_mailbox_errors)
+		text = text.format(
+			total_mailboxes      = total_mailboxes,
+			total_mailbox_errors = total_mailbox_errors,
+			total_emails_sent    = total_user_emails_sent,
+			time_total           = f"{time_total[0]} minutes {time_total[1]} seconds"
+		)
 		html = open(cfg["admin_report_email_file_fqdn_html"], "r")
 		html = html.read()
-		html = html.format(time_total=f"{time_total[0]} minutes {time_total[1]} seconds", total_emails_sent=total_user_emails_sent, total_mailbox_errors=total_mailbox_errors)
+		html = html.format(
+			total_mailboxes      = total_mailboxes,
+			total_mailbox_errors = total_mailbox_errors,
+			total_emails_sent    = total_user_emails_sent,
+			time_total           = f"{time_total[0]} minutes {time_total[1]} seconds"
+		)
 
 		attachment_filename = report_filename  # In same directory as script
 
@@ -549,12 +561,17 @@ def purge_files(retention_days, file_dir, file_ext):
 if __name__ == "__main__":
 	today = datetime.datetime.today()
 	time_start = datetime.datetime.now()
+	total_mailboxes        = 0
 	total_user_emails_sent = 0
 	total_mailbox_errors   = 0
 
 	# Initiate logger
 	logger = logging.getLogger('global-log')
 	init_logger(console_debug_lvl="2")
+
+	tool_title_str = (f"UCXN PIN Reminder - Version {version_info.__version__} Build: {version_info.__build__} Build Date: {version_info.__build_date__}")
+	logger.info(tool_title_str)
+	print('='*(tool_title_str.count('')+25))
 
 	cfg = read_ini("config.ini")
 	validate_ini("config.ini")
@@ -580,7 +597,12 @@ if __name__ == "__main__":
 	logger.info("Step 6 of 6: Sending Admin Email...")
 	send_admin_email()
 
-	logger.debug(f"Tool Runtime: {time_total[0]} minutes {time_total[1]} seconds")
-
 	purge_files(cfg['retention_days'], cfg["logs_folder_name"], ".log")
 	purge_files(cfg['retention_days'], cfg["reports_folder_name"], ".xlsx")
+
+	tool_stats_str = f"Total Mailboxes: {total_mailboxes} Total Emails Sent: {total_user_emails_sent} Total Mailbox Errors: {total_mailbox_errors}"
+	print('='*(tool_stats_str.count('')+25))
+	logger.info(tool_stats_str)
+	# logger.info(f"Total Mailboxes: {total_mailboxes} Total Emails Sent: {total_user_emails_sent} Total Mailbox Errors: {total_mailbox_errors}")
+	logger.info(f"Tool Runtime: {time_total[0]} minutes {time_total[1]} seconds")
+	logger.info("Tool Finished")
