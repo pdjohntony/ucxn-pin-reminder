@@ -35,7 +35,6 @@ disable_warnings(InsecureRequestWarning)
 # CONFIGURE ADMIN EMAIL INTERVALS
 # COLLECT EMAIL SENT STATS FOR ADMIN REPORT/EMAIL
 # UPDATE README
-# Move report generation to function
 
 headers = {
 	"content-type": "application/json",
@@ -497,6 +496,39 @@ def send_admin_email_error():
 	except Exception as e:
 		logger.error(f"Error: Admin error email was not sent: {e}")
 
+def generate_report():
+	"""
+	Generates PIN report file
+
+	- Creates pandas dataframe from mailboxes (dict)
+	- Loads dataframe into ExcelWriter
+	- Dynamically adjust all the column lengths
+	- Saves as XSLX file
+
+	Returns:
+		report_filename (str): filename used for admin email attachment
+	"""
+	try:
+		# Create a Pandas Excel writer using XlsxWriter engine.
+		df = pandas.DataFrame(mailboxes)
+		del df["ObjectId"]
+		report_filename = 'ucxn_voicemail_pin_report_'+datetime.datetime.now().strftime("%Y-%m-%d-%I-%M-%S")+'.xlsx'
+		writer = pandas.ExcelWriter(os.path.join(cfg["reports_folder_name"], report_filename), engine='xlsxwriter')
+		# Convert the dataframe to an XlsxWriter Excel object.
+		df.to_excel(writer, sheet_name='Sheet1', index=False)
+		# Dynamically adjust all the column lengths
+		for column in df:
+			column_length = max(df[column].astype(str).map(len).max(), len(column))
+			col_idx = df.columns.get_loc(column)
+			writer.sheets['Sheet1'].set_column(col_idx, col_idx, column_length)
+		writer.save() # Close the Pandas Excel writer and output the Excel file.
+		logger.info(f"Report saved: {report_filename}")
+		return report_filename
+	except Exception as e:
+		logger.error(f"Error: report was not saved: {e}")
+		send_admin_email_error()
+		sys.exit(1)
+
 def purge_files(retention_days, file_dir, file_ext):
 	"""
 	Purges files past a certain date
@@ -539,27 +571,13 @@ if __name__ == "__main__":
 	send_user_email()
 
 	logger.info("Step 5 of 6: Saving Report...")
-	# Create a Pandas Excel writer using XlsxWriter engine.
-	df = pandas.DataFrame(mailboxes)
-	del df["ObjectId"]
-	report_filename = 'ucxn_voicemail_pin_report_'+datetime.datetime.now().strftime("%Y-%m-%d-%I-%M-%S")+'.xlsx'
-	writer = pandas.ExcelWriter(os.path.join(cfg["reports_folder_name"], report_filename), engine='xlsxwriter')
-	# Convert the dataframe to an XlsxWriter Excel object.
-	df.to_excel(writer, sheet_name='Sheet1', index=False)
-	# Dynamically adjust all the column lengths
-	for column in df:
-		column_length = max(df[column].astype(str).map(len).max(), len(column))
-		col_idx = df.columns.get_loc(column)
-		writer.sheets['Sheet1'].set_column(col_idx, col_idx, column_length)
-	writer.save() # Close the Pandas Excel writer and output the Excel file.
-	logger.info(f"Report saved: {report_filename}")
-
-	time_end   = datetime.datetime.now()
-	time_total = divmod((time_end - time_start).seconds, 60)
+	report_filename = generate_report()
 
 	logger.info("Step 6 of 6: Sending Admin Email...")
 	send_admin_email()
 
+	time_end   = datetime.datetime.now()
+	time_total = divmod((time_end - time_start).seconds, 60)
 	logger.debug(f"Tool Runtime: {time_total[0]} minutes {time_total[1]} seconds")
 
 	purge_files(cfg['retention_days'], cfg["logs_folder_name"], ".log")
