@@ -32,8 +32,9 @@ disable_warnings(InsecureRequestWarning)
 
 #! TO DO LIST
 # CONFIGURE ADMIN EMAIL INTERVALS
-# UPDATE README
 # Improve report formatting
+# Add optional arg to generate report with no smtp emails
+# Make user email attachment optional
 
 headers = {
 	"content-type": "application/json",
@@ -603,6 +604,5 @@ if __name__ == "__main__":
 	tool_stats_str = f"Total Mailboxes: {total_mailboxes} Total Emails Sent: {total_user_emails_sent} Total Mailbox Errors: {total_mailbox_errors}"
 	print('='*(tool_stats_str.count('')+25))
 	logger.info(tool_stats_str)
-	# logger.info(f"Total Mailboxes: {total_mailboxes} Total Emails Sent: {total_user_emails_sent} Total Mailbox Errors: {total_mailbox_errors}")
 	logger.info(f"Tool Runtime: {time_total[0]} minutes {time_total[1]} seconds")
 	logger.info("Tool Finished")
