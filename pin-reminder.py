@@ -33,8 +33,6 @@ disable_warnings(InsecureRequestWarning)
 
 #! TO DO LIST
 # CONFIGURE ADMIN EMAIL INTERVALS
-# Improve report formatting
-# Add more stuff to report, creation, enrollment, # of vms
 
 headers = {
 	"content-type": "application/json",
@@ -284,7 +282,9 @@ def get_mailboxes():
 					"Alias"        : m["Alias"],
 					"Display Name" : m["DisplayName"],
 					"Extension"    : m["DtmfAccessId"],
-					"Email Address": m.get("EmailAddress", "")
+					"Email Address": m.get("EmailAddress", ""),
+					"Creation Time": datetime.datetime.strptime(m["CreationTime"], "%Y-%m-%dT%H:%M:%SZ").date(),
+					"Self Enrollment": m["IsVmEnrolled"]
 				})
 		return mailboxes
 	except Exception as e:
@@ -480,6 +480,8 @@ def send_admin_email_error():
 
 	"""
 	try:
+		if rmode == "noemail": return
+		
 		sender    = cfg['from_address']
 		receivers = cfg['admin_email']
 
@@ -536,17 +538,26 @@ def generate_report():
 		report_filename = 'ucxn_voicemail_pin_report_'+datetime.datetime.now().strftime("%Y-%m-%d-%I-%M-%S")+'.xlsx'
 		writer = pandas.ExcelWriter(os.path.join(cfg["reports_folder_name"], report_filename), engine='xlsxwriter')
 		# Convert the dataframe to an XlsxWriter Excel object.
-		df.to_excel(writer, sheet_name='Sheet1', index=False)
+		df.to_excel(writer, sheet_name='Summary', index=False)
+		number_rows = len(df.index)
+		workbook  = writer.book
+		worksheet = writer.sheets['Summary']
+		# Change cell colors
+		format_red   = workbook.add_format({'bg_color' : '#FF0000'})
+		format_green = workbook.add_format({'bg_color' : '#009900'})
+		worksheet.conditional_format(f'F1:F{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_red})   # Column: Self Enrollment
+		worksheet.conditional_format(f'I1:I{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_red})   # Column: PIN Doesnt Expire
+		worksheet.conditional_format(f'N1:N{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_green}) # Column: Expiration Email Sent
 		# Dynamically adjust all the column lengths
 		for column in df:
 			column_length = max(df[column].astype(str).map(len).max(), len(column))
 			col_idx = df.columns.get_loc(column)
-			writer.sheets['Sheet1'].set_column(col_idx, col_idx, column_length)
+			writer.sheets['Summary'].set_column(col_idx, col_idx, column_length)
 		writer.save() # Close the Pandas Excel writer and output the Excel file.
 		logger.info(f"Report saved: {report_filename}")
 		return report_filename
 	except Exception as e:
-		logger.error(f"Error: report was not saved: {e}")
+		logger.error(f"Error: report was not saved: {e} on line {sys.exc_info()[2].tb_lineno}")
 		send_admin_email_error()
 		sys.exit(1)
 
