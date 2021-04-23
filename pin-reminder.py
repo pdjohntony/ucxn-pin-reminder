@@ -34,7 +34,6 @@ disable_warnings(InsecureRequestWarning)
 #! TO DO LIST
 # CONFIGURE ADMIN EMAIL INTERVALS
 # Improve report formatting
-# Make user email attachment optional
 # Add more stuff to report, creation, enrollment, # of vms
 
 headers = {
@@ -126,8 +125,11 @@ def validate_ini(cfg_file_name):
 		if not os.path.isfile(cfg["user_reminder_email_file_fqdn_txt"]): raise Exception(f"{cfg['user_reminder_email_file_fqdn_txt']} does not exist!")
 		if not os.path.isfile(cfg["user_reminder_email_file_fqdn_html"]): raise Exception(f"{cfg['user_reminder_email_file_fqdn_html']} does not exist!")
 
-		cfg["user_reminder_attachment_file_fqdn"] = os.path.join(cfg["email_assets_folder_name"], cfg["user_reminder_attachment_file_name"])
-		if not os.path.isfile(cfg["user_reminder_attachment_file_fqdn"]): raise Exception(f"{cfg['user_reminder_attachment_file_fqdn']} does not exist!")
+		if cfg["user_reminder_attachment_file_name"] != "none":
+			cfg["user_reminder_attachment_file_fqdn"] = os.path.join(cfg["email_assets_folder_name"], cfg["user_reminder_attachment_file_name"])
+			if not os.path.isfile(cfg["user_reminder_attachment_file_fqdn"]): raise Exception(f"{cfg['user_reminder_attachment_file_fqdn']} does not exist!")
+		else:
+			cfg["user_reminder_attachment_file_fqdn"] = "none"
 		
 		cfg["retention_days"] = int(cfg["retention_days"])
 
@@ -377,22 +379,23 @@ def send_user_email():
 					attachment_filename = cfg['user_reminder_attachment_file_name']  # In same directory as script
 
 					# Open file in binary mode
-					with open(cfg['user_reminder_attachment_file_fqdn'], "rb") as attachment:
-						part_att = MIMEBase("application", "octet-stream") # Add file as application/octet-stream
-						part_att.set_payload(attachment.read())            # Email client can usually download this automatically as attachment
+					if not cfg["user_reminder_attachment_file_name"] == "none":
+						with open(cfg['user_reminder_attachment_file_fqdn'], "rb") as attachment:
+							part_att = MIMEBase("application", "octet-stream") # Add file as application/octet-stream
+							part_att.set_payload(attachment.read())            # Email client can usually download this automatically as attachment
 
-					# Encode file in ASCII characters to send by email    
-					encoders.encode_base64(part_att)
+						# Encode file in ASCII characters to send by email    
+						encoders.encode_base64(part_att)
 
-					# Add header as key/value pair to attachment part
-					part_att.add_header(
-						"Content-Disposition",
-						f"attachment; filename= {attachment_filename}",
-					)
+						# Add header as key/value pair to attachment part
+						part_att.add_header(
+							"Content-Disposition",
+							f"attachment; filename= {attachment_filename}",
+						)
 
 					message.attach(MIMEText(text, "plain")) # Add HTML/plain-text parts to MIMEMultipart message
 					message.attach(MIMEText(html, "html"))  # The email client will try to render the last part first
-					message.attach(part_att)                # Attachment File
+					if not cfg["user_reminder_attachment_file_name"] == "none": message.attach(part_att) # Attachment File
 
 					smtpObj = smtplib.SMTP(cfg['smtp_server'])
 					smtpObj.sendmail(sender, receivers, message.as_string())

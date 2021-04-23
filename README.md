@@ -53,7 +53,7 @@ admin_email              = admin@xyz.com
 # config.ini line: user_reminder_email_file = user_reminder_template
 admin_report_email_file  = admin_report_template
 user_reminder_email_file = user_reminder_template
-# specify full file name with file extension for the email attachment
+# specify full file name with file extension for the email attachment, or none
 user_reminder_attachment = Changing Your Voicemail PIN.docx
 
 [DEBUG]
