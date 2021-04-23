@@ -26,6 +26,7 @@ from email.mime.text import MIMEText
 import os
 import logging
 import traceback
+import socket
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
@@ -34,7 +35,6 @@ disable_warnings(InsecureRequestWarning)
 # CONFIGURE ADMIN EMAIL INTERVALS
 # Improve report formatting
 # Make user email attachment optional
-# Add sent from server IP/Name in admin email
 # Add more stuff to report, creation, enrollment, # of vms
 
 headers = {
@@ -413,6 +413,9 @@ def send_admin_email():
 
 	"""
 	try:
+		hostname   = socket.gethostname()
+		ip_address = socket.gethostbyname(hostname)
+
 		sender    = cfg['from_address']
 		receivers = cfg['admin_email']
 
@@ -427,7 +430,8 @@ def send_admin_email():
 			total_mailboxes      = total_mailboxes,
 			total_mailbox_errors = total_mailbox_errors,
 			total_emails_sent    = total_user_emails_sent,
-			time_total           = f"{time_total[0]} minutes {time_total[1]} seconds"
+			time_total           = f"{time_total[0]} minutes {time_total[1]} seconds",
+			client_info          = f"{hostname} / {ip_address}"
 		)
 		html = open(cfg["admin_report_email_file_fqdn_html"], "r")
 		html = html.read()
@@ -435,7 +439,8 @@ def send_admin_email():
 			total_mailboxes      = total_mailboxes,
 			total_mailbox_errors = total_mailbox_errors,
 			total_emails_sent    = total_user_emails_sent,
-			time_total           = f"{time_total[0]} minutes {time_total[1]} seconds"
+			time_total           = f"{time_total[0]} minutes {time_total[1]} seconds",
+			client_info          = f"{hostname} / {ip_address}"
 		)
 
 		attachment_filename = report_filename  # In same directory as script

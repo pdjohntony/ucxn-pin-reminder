@@ -6,3 +6,5 @@ Total Errors Occured = {total_mailbox_errors}
 Tool Runtime = {time_total}
 
 See attached report for more details
+
+This email was generated from {client_info}
