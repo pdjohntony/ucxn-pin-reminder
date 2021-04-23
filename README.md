@@ -3,6 +3,7 @@ CLI tool that uses the Unity Connection CUPI API to generate mailbox PIN expirat
 
 ## Table of contents
 - [Installation](#installation)
+- [Setup](#setup)
 - [Usage](#usage)
 ## Installation
 Clone the repository
@@ -14,15 +15,19 @@ Install the python requirements
 pip install -r requirements.txt
 ```
 
-## Usage
+## Setup
 
 Open the `config.ini` file and fill it out. Most importantly the UCXN server ip/fqdn, credentials, and the SMTP server, from/to addresses.
 
 Optionally you can customize the end user and admin email templates in the `email_assets` folder.
 
-Now you are ready to run the tool, it takes no arguments:
-```
-py pin-reminder.py
+## Usage
+```bash
+Usage: python pin-reminder.py [OPTION]
+
+Optional Arguments:
+  -n, -noemail     generates report but does not send user or admin emails
+  -h, -help        display this help and exit
 ```
 
 `config.ini example`

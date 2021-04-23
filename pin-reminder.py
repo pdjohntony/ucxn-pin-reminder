@@ -33,8 +33,9 @@ disable_warnings(InsecureRequestWarning)
 #! TO DO LIST
 # CONFIGURE ADMIN EMAIL INTERVALS
 # Improve report formatting
-# Add optional arg to generate report with no smtp emails
 # Make user email attachment optional
+# Add sent from server IP/Name in admin email
+# Add more stuff to report, creation, enrollment, # of vms
 
 headers = {
 	"content-type": "application/json",
@@ -560,6 +561,21 @@ def purge_files(retention_days, file_dir, file_ext):
 		logger.debug("File purge error: " + str(e))
 
 if __name__ == "__main__":
+	try:
+		usage_help = "\nUsage: python pin-reminder.py [OPTION]\n\nOptional Arguments:\n  -n, -noemail     generates report but does not send user or admin emails\n  -h, -help        display this help and exit"
+		
+		if   sys.argv[1] == "-n" or sys.argv[1] == "-noemail":
+			rmode = "noemail"
+		elif sys.argv[1] == "-h" or sys.argv[1] == "-help":
+			print(usage_help)
+			sys.exit(0)
+		else:
+			print(f"\n{sys.argv[1]} is not a valid option")
+			print(usage_help)
+			sys.exit(1)
+	except IndexError as e:
+		rmode = None
+
 	today = datetime.datetime.today()
 	time_start = datetime.datetime.now()
 	total_mailboxes        = 0
@@ -586,8 +602,11 @@ if __name__ == "__main__":
 	logger.info("Step 3 of 6: Getting PIN data...")
 	get_pin_data()
 
-	logger.info("Step 4 of 6: Sending User Emails...")
-	send_user_email()
+	if not rmode == "noemail":
+		logger.info("Step 4 of 6: Sending User Emails...")
+		send_user_email()
+	else:
+		logger.info("Step 4 of 6: Sending User Emails... SKIPPED due to -noemail arg")
 
 	logger.info("Step 5 of 6: Saving Report...")
 	report_filename = generate_report()
@@ -595,8 +614,11 @@ if __name__ == "__main__":
 	time_end   = datetime.datetime.now()
 	time_total = divmod((time_end - time_start).seconds, 60)
 
-	logger.info("Step 6 of 6: Sending Admin Email...")
-	send_admin_email()
+	if not rmode == "noemail":
+		logger.info("Step 6 of 6: Sending Admin Email...")
+		send_admin_email()
+	else:
+		logger.info("Step 6 of 6: Sending Admin Email... SKIPPED due to -noemail arg")
 
 	purge_files(cfg['retention_days'], cfg["logs_folder_name"], ".log")
 	purge_files(cfg['retention_days'], cfg["reports_folder_name"], ".xlsx")
