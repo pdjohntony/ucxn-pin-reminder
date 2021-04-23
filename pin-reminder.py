@@ -33,6 +33,7 @@ disable_warnings(InsecureRequestWarning)
 
 #! TO DO LIST
 # CONFIGURE ADMIN EMAIL INTERVALS
+# Tally stats from report and include in admin email
 
 headers = {
 	"content-type": "application/json",
@@ -283,7 +284,7 @@ def get_mailboxes():
 					"Display Name" : m["DisplayName"],
 					"Extension"    : m["DtmfAccessId"],
 					"Email Address": m.get("EmailAddress", ""),
-					"Creation Time": datetime.datetime.strptime(m["CreationTime"], "%Y-%m-%dT%H:%M:%SZ").date(),
+					"Creation Time": m["CreationTime"][:10],
 					"Self Enrollment": m["IsVmEnrolled"]
 				})
 		return mailboxes
