@@ -27,7 +27,7 @@ import os
 import logging
 import traceback
 import socket
-import xlsxwriter
+import xlsxwriter # used for pandas report
 from urllib3 import disable_warnings
 from urllib3.exceptions import InsecureRequestWarning
 disable_warnings(InsecureRequestWarning)
@@ -342,6 +342,7 @@ def send_user_email():
 
 	- PIN Never Expires == false
 	- Mailbox has an email address configured
+	- Auth Rule expiration days isn't 0
 	- If Days Until Expired matches one of the configured email intervals
 
 	If successful, returns updated mailboxes (list[dict]). Otherwise raise an exception.
@@ -352,7 +353,7 @@ def send_user_email():
 	for m in tqdm(mailboxes):
 		try:
 			if m["Auth Rule"] == "ERROR": continue # skips errored mailbox
-			if m["PIN Doesnt Expire"] == "false" and m["Email Address"] != "":
+			if m["PIN Doesnt Expire"] == "false" and m["Email Address"] != "" and m["Expiration Days"] != "0":
 				if any(str(m["Days Until Expired"]) in s for s in cfg['email_intervals']):
 					logger.debug(f"Setting up email for Alias={m['Alias']}")
 
