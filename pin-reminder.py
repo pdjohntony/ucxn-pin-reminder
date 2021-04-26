@@ -551,6 +551,8 @@ def generate_report():
 		worksheet.conditional_format(f'F1:F{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_red})   # Column: Self Enrollment
 		worksheet.conditional_format(f'I1:I{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_red})   # Column: PIN Doesnt Expire
 		worksheet.conditional_format(f'N1:N{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_green}) # Column: Expiration Email Sent
+		worksheet.autofilter(f'A1:N{number_rows+1}')
+		worksheet.freeze_panes(1, 3)
 		# Dynamically adjust all the column lengths
 		for column in df:
 			column_length = max(df[column].astype(str).map(len).max(), len(column))
