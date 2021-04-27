@@ -308,6 +308,16 @@ def get_pin_data():
 	"""
 	for m in tqdm(mailboxes):
 		try:
+			url       = f"{cfg['base_url']}/vmrest/users/{m['ObjectId']}"
+			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
+			resp_json = response.json()
+			
+			if resp_json["LdapType"] == "3":
+				m["LDAP"] = "true"
+			else:
+				m["LDAP"] = "false"
+
 			url       = f"{cfg['base_url']}/vmrest/users/{m['ObjectId']}/credential/pin"
 			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
