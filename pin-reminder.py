@@ -556,12 +556,14 @@ def generate_report():
 		workbook  = writer.book
 		worksheet = writer.sheets['Summary']
 		# Change cell colors
-		format_red   = workbook.add_format({'bg_color' : '#FF0000'})
-		format_green = workbook.add_format({'bg_color' : '#009900'})
+		format_red    = workbook.add_format({'bg_color' : '#FF0000'})
+		format_green  = workbook.add_format({'bg_color' : '#009900'})
+		format_yellow = workbook.add_format({'bg_color' : '#FFFF00'})
 		worksheet.conditional_format(f'F1:F{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_red})   # Column: Self Enrollment
-		worksheet.conditional_format(f'I1:I{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_red})   # Column: PIN Doesnt Expire
-		worksheet.conditional_format(f'N1:N{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_green}) # Column: Expiration Email Sent
-		worksheet.autofilter(f'A1:N{number_rows+1}')
+		worksheet.conditional_format(f'J1:J{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_red})   # Column: PIN Doesnt Expire
+		worksheet.conditional_format(f'O1:O{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_green}) # Column: Expiration Email Sent
+		worksheet.conditional_format(f'A2:O{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"ERROR"', 'format': format_yellow}) # Highlight row if Auth Rule == ERROR
+		worksheet.autofilter(f'A1:O{number_rows+1}')
 		worksheet.freeze_panes(1, 3)
 		# Dynamically adjust all the column lengths
 		for column in df:
