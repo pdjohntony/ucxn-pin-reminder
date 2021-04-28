@@ -62,6 +62,7 @@ def read_ini(cfg_file_name):
 		config.read(cfg_file_name)
 		
 		cfg                                       = {}
+		cfg["ucxn_server"]                        = config.get('UNITY', 'server')
 		cfg["base_url"]                           = config.get('UNITY', 'server')
 		cfg["username"]                           = config.get('UNITY', 'username')
 		cfg["password"]                           = config.get('UNITY', 'password')
@@ -227,6 +228,7 @@ def get_auth_rules():
 	"""
 	try:
 		url       = f"{cfg['base_url']}/vmrest/authenticationrules"
+		logger.debug(f"GET = {url}")
 		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 		if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 		resp_json = response.json()
@@ -238,6 +240,7 @@ def get_auth_rules():
 				"DisplayName": r["DisplayName"],
 				"MaxDays"    : r["MaxDays"]
 			})
+		logger.debug(f"authrules = {authrules}")
 		return authrules
 	except Exception as e:
 		logger.error(f"Error: {e}")
@@ -259,21 +262,22 @@ def get_mailboxes():
 	"""
 	try:
 		url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage=0"
+		logger.debug(f"GET = {url}")
 		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 		if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 		resp_json = response.json()
 		global total_mailboxes
 		total_mailboxes = resp_json['@total']
-		logger.debug(f"Total Mailboxes: {total_mailboxes}")
+		logger.debug(f"Total Mailboxes = {total_mailboxes}")
 		rowsPerPage = 100
 		total_pages = math.ceil(int(total_mailboxes) / rowsPerPage)
-		logger.debug(f"total_pages = {total_pages}")
+		logger.debug(f"Total Pages = {total_pages} (with {rowsPerPage} rows per page)")
 		logger.debug("Starting page loop")
 
 		mailboxes = []
 		for pageNumber in tqdm(range(total_pages)):
-			# print(f"pageNumber = {pageNumber+1}")
 			url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage={rowsPerPage}&pageNumber={pageNumber+1}"
+			logger.debug(f"GET = {url}")
 			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 			resp_json = response.json()
@@ -308,7 +312,9 @@ def get_pin_data():
 	"""
 	for m in tqdm(mailboxes):
 		try:
+			logger.debug(f"Mailbox Alias = {m['Alias']}")
 			url       = f"{cfg['base_url']}/vmrest/users/{m['ObjectId']}"
+			logger.debug(f"GET = {url}")
 			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 			resp_json = response.json()
@@ -319,6 +325,7 @@ def get_pin_data():
 				m["LDAP"] = "false"
 
 			url       = f"{cfg['base_url']}/vmrest/users/{m['ObjectId']}/credential/pin"
+			logger.debug(f"GET = {url}")
 			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
 			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 			resp_json = response.json()
@@ -628,6 +635,8 @@ if __name__ == "__main__":
 
 	cfg = read_ini("config.ini")
 	validate_ini("config.ini")
+
+	logger.info(f"UCXN Server = {cfg['ucxn_server']}")
 
 	logger.info("Step 1 of 6: Getting auth rules...")
 	authrules = get_auth_rules()
