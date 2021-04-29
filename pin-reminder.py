@@ -339,8 +339,11 @@ def get_pin_data():
 			m["PIN Must Change"]       = resp_json["CredMustChange"]
 			m["Date Last Changed"]     = datetime.datetime.strptime(resp_json["TimeChanged"], "%Y-%m-%d %H:%M:%S.%f")
 			m["Expiration Date"]       = m["Date Last Changed"] + datetime.timedelta(days=int(m["Expiration Days"]))
-			m["Days Until Expired"]    = m["Expiration Date"] - today
-			m["Days Until Expired"]    = m["Days Until Expired"].days
+			if m["Expiration Days"] == "0":
+				m["Days Until Expired"] = 0
+			else:
+				m["Days Until Expired"]    = m["Expiration Date"] - today
+				m["Days Until Expired"]    = m["Days Until Expired"].days
 			m["Date Last Changed"]     = m["Date Last Changed"].date() # Convert datetime to date
 			m["Expiration Date"]       = m["Expiration Date"].date()   # Convert datetime to date
 			m["Expiration Email Sent"] = "false"
@@ -559,18 +562,30 @@ def generate_report():
 		writer = pandas.ExcelWriter(os.path.join(cfg["reports_folder_name"], report_filename), engine='xlsxwriter')
 		# Convert the dataframe to an XlsxWriter Excel object.
 		df.to_excel(writer, sheet_name='Summary', index=False)
-		number_rows = len(df.index)
+		number_rows = (len(df.index) + 1)
 		workbook  = writer.book
 		worksheet = writer.sheets['Summary']
 		# Change cell colors
-		format_red    = workbook.add_format({'bg_color' : '#FF0000'})
-		format_green  = workbook.add_format({'bg_color' : '#009900'})
-		format_yellow = workbook.add_format({'bg_color' : '#FFFF00'})
-		worksheet.conditional_format(f'F1:F{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_red})   # Column: Self Enrollment
-		worksheet.conditional_format(f'J1:J{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_red})   # Column: PIN Doesnt Expire
-		worksheet.conditional_format(f'O1:O{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"true"', 'format': format_green}) # Column: Expiration Email Sent
-		worksheet.conditional_format(f'A2:O{number_rows+1}', {'type':'cell', 'criteria':'==','value': '"ERROR"', 'format': format_yellow}) # Highlight row if Auth Rule == ERROR
-		worksheet.autofilter(f'A1:O{number_rows+1}')
+		format_red    = workbook.add_format({'bg_color': '#FFC7CE', 'font_color': '#cf2d06'})
+		format_green  = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
+		format_yellow = workbook.add_format({'bg_color': '#FFEB9C', 'font_color': '#9c5700'})
+		worksheet.conditional_format(f'A2:O{number_rows}', {'type':'formula', 'criteria':'=$H2="ERROR"', 'format': format_yellow})             # Highlight row if Auth Rule == ERROR
+		worksheet.conditional_format(f'F2:F{number_rows}', {'type':'text', 'criteria':'containing', 'value': 'true', 'format': format_red})    # Column: Self Enrollment
+		worksheet.conditional_format(f'F2:F{number_rows}', {'type':'text', 'criteria':'containing', 'value': 'false', 'format': format_green}) # Column: Self Enrollment
+		worksheet.conditional_format(f'G2:G{number_rows}', {'type':'text', 'criteria':'containing', 'value': 'true', 'format': format_green})  # Column: LDAP
+		worksheet.conditional_format(f'G2:G{number_rows}', {'type':'text', 'criteria':'containing', 'value': 'false', 'format': format_red})   # Column: LDAP
+		worksheet.conditional_format(f'I2:I{number_rows}', {'type':'cell', 'criteria':'!=', 'value': '"0"', 'format': format_green})           # Column: Expiration Days
+		worksheet.conditional_format(f'I2:I{number_rows}', {'type':'cell', 'criteria':'==', 'value': '"0"', 'format': format_red})             # Column: Expiration Days
+		worksheet.conditional_format(f'J2:J{number_rows}', {'type':'text', 'criteria':'containing', 'value': 'true', 'format': format_red})    # Column: PIN Doesnt Expire
+		worksheet.conditional_format(f'J2:J{number_rows}', {'type':'text', 'criteria':'containing', 'value': 'false', 'format': format_green}) # Column: PIN Doesnt Expire
+		worksheet.conditional_format(f'K2:K{number_rows}', {'type':'text', 'criteria':'containing', 'value': 'true', 'format': format_red})    # Column: PIN Must Change
+		worksheet.conditional_format(f'K2:K{number_rows}', {'type':'text', 'criteria':'containing', 'value': 'false', 'format': format_green}) # Column: PIN Must Change
+		worksheet.conditional_format(f'N2:N{number_rows}', {'type':'cell', 'criteria':'<=', 'value': '0', 'format': format_red})               # Column: Days Until Expired
+		worksheet.conditional_format(f'N2:N{number_rows}', {'type':'cell', 'criteria':'>', 'value': '0', 'format': format_green})              # Column: Days Until Expired
+		worksheet.conditional_format(f'O2:O{number_rows}', {'type':'text', 'criteria':'containing', 'value': 'true', 'format': format_green})  # Column: Expiration Email Sent
+		# Create a list of column headers, to use in add_table().
+		column_settings = [{'header': column} for column in df.columns]
+		worksheet.add_table(f'A1:O{number_rows}', {'columns': column_settings})
 		worksheet.freeze_panes(1, 3)
 		# Dynamically adjust all the column lengths
 		for column in df:
