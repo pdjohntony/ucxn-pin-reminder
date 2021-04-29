@@ -81,7 +81,7 @@ def read_ini(cfg_file_name):
 
 		return cfg
 	except Exception as e:
-		logger.error(f"Error in {cfg_file_name} file: {e}")
+		logger.error(f"Error in {cfg_file_name} file: {e} on line {sys.exc_info()[2].tb_lineno}")
 		sys.exit(1)
 
 def validate_ini(cfg_file_name):
@@ -145,7 +145,7 @@ def validate_ini(cfg_file_name):
 		logger.error(f"Error in config file: retention_days must be a number not a string")
 		sys.exit(1)
 	except Exception as e:
-		logger.error(f"Error in {cfg_file_name} file: {e}")
+		logger.error(f"Error in {cfg_file_name} file: {e} on line {sys.exc_info()[2].tb_lineno}")
 		sys.exit(1)
 
 def init_logger(console_debug_lvl = '1'):
@@ -243,7 +243,7 @@ def get_auth_rules():
 		logger.debug(f"authrules = {authrules}")
 		return authrules
 	except Exception as e:
-		logger.error(f"Error: {e}")
+		logger.error(f"Error: {e} on line {sys.exc_info()[2].tb_lineno}")
 		send_admin_email_error()
 		sys.exit(1)
 
@@ -294,7 +294,7 @@ def get_mailboxes():
 				})
 		return mailboxes
 	except Exception as e:
-		logger.error(f"Error: {e}")
+		logger.error(f"Error: {e} on line {sys.exc_info()[2].tb_lineno}")
 		send_admin_email_error()
 		sys.exit(1)
 
@@ -310,6 +310,10 @@ def get_pin_data():
 	Returns:
 		mailboxes (dict)
 	"""
+	global mailboxes_with_exp_days
+	global mailboxes_without_exp_days
+	global total_expired_pins
+	global total_24hr_pin_changes
 	for m in tqdm(mailboxes):
 		try:
 			logger.debug(f"Mailbox Alias = {m['Alias']}")
@@ -339,17 +343,20 @@ def get_pin_data():
 			m["PIN Must Change"]       = resp_json["CredMustChange"]
 			m["Date Last Changed"]     = datetime.datetime.strptime(resp_json["TimeChanged"], "%Y-%m-%d %H:%M:%S.%f")
 			m["Expiration Date"]       = m["Date Last Changed"] + datetime.timedelta(days=int(m["Expiration Days"]))
-			if m["Expiration Days"] == "0":
+			if m["Expiration Days"] == "0" or m["PIN Doesnt Expire"] == "true":
+				mailboxes_without_exp_days += 1
 				m["Days Until Expired"] = 0
 			else:
-				m["Days Until Expired"]    = m["Expiration Date"] - today
-				m["Days Until Expired"]    = m["Days Until Expired"].days
+				mailboxes_with_exp_days += 1
+				m["Days Until Expired"] = m["Expiration Date"] - today
+				m["Days Until Expired"] = m["Days Until Expired"].days
+				if m["Days Until Expired"] <= 0: total_expired_pins += 1
 			m["Date Last Changed"]     = m["Date Last Changed"].date() # Convert datetime to date
 			m["Expiration Date"]       = m["Expiration Date"].date()   # Convert datetime to date
 			m["Expiration Email Sent"] = "false"
-
+			if (today.date() - m["Date Last Changed"]).days < 1: total_24hr_pin_changes += 1
 		except Exception as e:
-			logger.error(f"Error: {e}")
+			logger.error(f"Error: {e} on line {sys.exc_info()[2].tb_lineno}")
 			m["Auth Rule"] = "ERROR"
 			global total_mailbox_errors
 			total_mailbox_errors += 1
@@ -427,7 +434,7 @@ def send_user_email():
 					global total_user_emails_sent
 					total_user_emails_sent += 1
 		except Exception as e:
-			logger.error(f"Error: User email was not sent: {e}")
+			logger.error(f"Error: User email was not sent: {e} on line {sys.exc_info()[2].tb_lineno}")
 
 	return mailboxes
 
@@ -453,20 +460,28 @@ def send_admin_email():
 		text = open(cfg["admin_report_email_file_fqdn_txt"], "r")
 		text = text.read()
 		text = text.format(
-			total_mailboxes      = total_mailboxes,
-			total_mailbox_errors = total_mailbox_errors,
-			total_emails_sent    = total_user_emails_sent,
-			time_total           = f"{time_total[0]} minutes {time_total[1]} seconds",
-			client_info          = f"{hostname} / {ip_address}"
+			total_mailboxes            = total_mailboxes,
+			mailboxes_with_exp_days    = mailboxes_with_exp_days,
+			mailboxes_without_exp_days = mailboxes_without_exp_days,
+			total_expired_pins         = total_expired_pins,
+			total_24hr_pin_changes     = total_24hr_pin_changes,
+			total_mailbox_errors       = total_mailbox_errors,
+			total_emails_sent          = total_user_emails_sent,
+			time_total                 = f"{time_total[0]} minutes {time_total[1]} seconds",
+			client_info                = f"{hostname} / {ip_address}"
 		)
 		html = open(cfg["admin_report_email_file_fqdn_html"], "r")
 		html = html.read()
 		html = html.format(
-			total_mailboxes      = total_mailboxes,
-			total_mailbox_errors = total_mailbox_errors,
-			total_emails_sent    = total_user_emails_sent,
-			time_total           = f"{time_total[0]} minutes {time_total[1]} seconds",
-			client_info          = f"{hostname} / {ip_address}"
+			total_mailboxes            = total_mailboxes,
+			mailboxes_with_exp_days    = mailboxes_with_exp_days,
+			mailboxes_without_exp_days = mailboxes_without_exp_days,
+			total_expired_pins         = total_expired_pins,
+			total_24hr_pin_changes     = total_24hr_pin_changes,
+			total_mailbox_errors       = total_mailbox_errors,
+			total_emails_sent          = total_user_emails_sent,
+			time_total                 = f"{time_total[0]} minutes {time_total[1]} seconds",
+			client_info                = f"{hostname} / {ip_address}"
 		)
 
 		attachment_filename = report_filename  # In same directory as script
@@ -493,7 +508,7 @@ def send_admin_email():
 		smtpObj.sendmail(sender, receivers, message.as_string())
 		logger.info(f"Admin email successfully sent to: {receivers}")
 	except Exception as e:
-		logger.error(f"Error: Admin email was not sent: {e}")
+		logger.error(f"Error: Admin email was not sent: {e} on line {sys.exc_info()[2].tb_lineno}")
 
 def send_admin_email_error():
 	"""
@@ -540,7 +555,7 @@ def send_admin_email_error():
 		smtpObj.sendmail(sender, receivers, message.as_string())
 		logger.info(f"Admin error email successfully sent to: {receivers}")
 	except Exception as e:
-		logger.error(f"Error: Admin error email was not sent: {e}")
+		logger.error(f"Error: Admin error email was not sent: {e} on line {sys.exc_info()[2].tb_lineno}")
 
 def generate_report():
 	"""
@@ -634,11 +649,15 @@ if __name__ == "__main__":
 	except IndexError as e:
 		rmode = None
 
-	today = datetime.datetime.today()
-	time_start = datetime.datetime.now()
-	total_mailboxes        = 0
-	total_user_emails_sent = 0
-	total_mailbox_errors   = 0
+	today                      = datetime.datetime.today()
+	time_start                 = datetime.datetime.now()
+	total_mailboxes            = 0
+	mailboxes_with_exp_days    = 0
+	mailboxes_without_exp_days = 0
+	total_expired_pins         = 0
+	total_24hr_pin_changes     = 0
+	total_user_emails_sent     = 0
+	total_mailbox_errors       = 0
 
 	# Initiate logger
 	logger = logging.getLogger('global-log')

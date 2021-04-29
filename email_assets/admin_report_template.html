@@ -1,12 +1,47 @@
 <html>
+	<head>
+		<style>
+			/* double {{}} required due to python .format() */
+			table, th, td {{border: 1px solid black;border-collapse: collapse;padding: 4px;}}
+		</style>
+	</head>
 	<body>
 		<p>
-			Unity Connection PIN Reminder & Report Tool<br><br>
-
-			Total Mailboxes = {total_mailboxes}<br>
-			Total Emails Sent = {total_emails_sent}<br>
-			Total Errors Occured = {total_mailbox_errors}<br>
-			Tool Runtime = {time_total}<br><br>
+			<table>
+				<tr>
+					<td>Total Mailboxes</td>
+					<td>{total_mailboxes}</td>
+				</tr>
+				<tr>
+					<td>Mailboxes configured with PIN expiration</td>
+					<td>{mailboxes_with_exp_days}</td>
+				</tr>
+				<tr>
+					<td>Mailboxes configured without PIN expiration</td>
+					<td>{mailboxes_without_exp_days}</td>
+				</tr>
+				<tr>
+					<td>Mailboxes with expired PIN</td>
+					<td>{total_expired_pins}</td>
+				</tr>
+				<tr>
+					<td>PINs changed within 24 hours</td>
+					<td>{total_24hr_pin_changes}</td>
+				</tr>
+				<tr>
+					<td>User Reminder Emails Sent</td>
+					<td>{total_emails_sent}</td>
+				</tr>
+				<tr>
+					<td>Errors Occured</td>
+					<td>{total_mailbox_errors}</td>
+				</tr>
+				<tr>
+					<td>Tool Runtime</td>
+					<td>{time_total}</td>
+				</tr>
+			</table>
+			<br>
 
 			See attached report for more details<br><br>
 

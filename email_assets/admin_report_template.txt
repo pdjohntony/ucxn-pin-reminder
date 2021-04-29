@@ -1,9 +1,11 @@
-Unity Connection PIN Reminder & Report Tool
-
-Total Mailboxes = {total_mailboxes}
-Total Emails Sent = {total_emails_sent}
-Total Errors Occured = {total_mailbox_errors}
-Tool Runtime = {time_total}
+Total Mailboxes										{total_mailboxes}
+Mailboxes configured with PIN expiration		{mailboxes_with_exp_days}
+Mailboxes configured without PIN expiration	{mailboxes_without_exp_days}
+Mailboxes with expired PIN							{total_expired_pins}
+PINs changed within 24 hours						{total_24hr_pin_changes}
+User Reminder Emails Sent							{total_emails_sent}
+Errors Occured											{total_mailbox_errors}
+Tool Runtime											{time_total}
 
 See attached report for more details
 
