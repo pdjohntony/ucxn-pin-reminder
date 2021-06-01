@@ -282,16 +282,30 @@ def get_mailboxes():
 			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 			resp_json = response.json()
 
-			for m in resp_json["User"]:
+			# If only a single user is returned the UCXN response User object will be a dict instead of a list
+			if type(resp_json["User"]) == list:
+				for m in resp_json["User"]:
+					mailboxes.append({
+						"ObjectId"       : m["ObjectId"],
+						"Alias"          : m["Alias"],
+						"Display Name"   : m["DisplayName"],
+						"Extension"      : m["DtmfAccessId"],
+						"Email Address"  : m.get("EmailAddress", ""),
+						"Creation Time"  : m["CreationTime"][:10],
+						"Self Enrollment": m["IsVmEnrolled"]
+					})
+			elif type(resp_json["User"]) == dict:
 				mailboxes.append({
-					"ObjectId"     : m["ObjectId"],
-					"Alias"        : m["Alias"],
-					"Display Name" : m["DisplayName"],
-					"Extension"    : m["DtmfAccessId"],
-					"Email Address": m.get("EmailAddress", ""),
-					"Creation Time": m["CreationTime"][:10],
-					"Self Enrollment": m["IsVmEnrolled"]
+					"ObjectId"       : resp_json["User"]["ObjectId"],
+					"Alias"          : resp_json["User"]["Alias"],
+					"Display Name"   : resp_json["User"]["DisplayName"],
+					"Extension"      : resp_json["User"]["DtmfAccessId"],
+					"Email Address"  : resp_json["User"].get("EmailAddress", ""),
+					"Creation Time"  : resp_json["User"]["CreationTime"][:10],
+					"Self Enrollment": resp_json["User"]["IsVmEnrolled"]
 				})
+			else:
+				raise Exception(f"Unexpected response from UCXN. The User object is neither a list or a dict.")
 		return mailboxes
 	except Exception as e:
 		logger.error(f"Error: {e} on line {sys.exc_info()[2].tb_lineno}")
