@@ -229,7 +229,7 @@ def get_auth_rules():
 	try:
 		url       = f"{cfg['base_url']}/vmrest/authenticationrules"
 		logger.debug(f"GET = {url}")
-		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+		response  = ucxn_session.get(url)
 		if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 		resp_json = response.json()
 
@@ -263,7 +263,7 @@ def get_mailboxes():
 	try:
 		url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage=0"
 		logger.debug(f"GET = {url}")
-		response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+		response  = ucxn_session.get(url)
 		if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 		resp_json = response.json()
 		global total_mailboxes
@@ -278,7 +278,7 @@ def get_mailboxes():
 		for pageNumber in tqdm(range(total_pages)):
 			url       = f"{cfg['base_url']}/vmrest/users?rowsPerPage={rowsPerPage}&pageNumber={pageNumber+1}"
 			logger.debug(f"GET = {url}")
-			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+			response  = ucxn_session.get(url)
 			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 			resp_json = response.json()
 
@@ -333,7 +333,7 @@ def get_pin_data():
 			logger.debug(f"Mailbox Alias = {m['Alias']}")
 			url       = f"{cfg['base_url']}/vmrest/users/{m['ObjectId']}"
 			logger.debug(f"GET = {url}")
-			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+			response  = ucxn_session.get(url)
 			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 			resp_json = response.json()
 			
@@ -344,7 +344,7 @@ def get_pin_data():
 
 			url       = f"{cfg['base_url']}/vmrest/users/{m['ObjectId']}/credential/pin"
 			logger.debug(f"GET = {url}")
-			response  = requests.get(url=url, auth=cfg["creds"], headers=headers, verify=False)
+			response  = ucxn_session.get(url)
 			if response.status_code != 200: raise Exception(f"Unexpected response from UCXN. Status Code: {response.status_code} Reason: {response.reason}")
 			resp_json = response.json()
 
@@ -685,6 +685,11 @@ if __name__ == "__main__":
 	validate_ini("config.ini")
 
 	logger.info(f"UCXN Server = {cfg['ucxn_server']}")
+
+	ucxn_session = requests.Session()
+	ucxn_session.auth = cfg["creds"]
+	ucxn_session.headers.update(headers)
+	ucxn_session.verify = False
 
 	logger.info("Step 1 of 6: Getting auth rules...")
 	authrules = get_auth_rules()
